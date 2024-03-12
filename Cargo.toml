@@ -1,10 +1,11 @@
 [package]
 name = "xdotter"
-version = "0.0.0"
+version = "0.0.1"
 edition = "2021"
 authors = ["cncsmonster <cncsmonster@163.com>"]
 description = "A simple dotfile manager"
 license = "MIT"
+repository = "https://github.com/cncsmonster/xdotter"
 
 
 [dependencies]
