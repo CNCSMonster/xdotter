@@ -2,6 +2,10 @@
 name = "xdotter"
 version = "0.1.0"
 edition = "2021"
+authors = ["cncsmonster <cncsmonster@163.com>"]
+description = "A simple dotfile manager"
+license = "MIT"
+
 
 [dependencies]
 clap = "4.5.2"
