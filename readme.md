@@ -25,7 +25,11 @@ echo 'xdotter is already installed in .cargo/bin/xdotter.'
 
 ## Usage
 
-## More
+```shell
+xdotter -h
+```
+
 
 ## License
 
+[LICENSE](LICENSE)
