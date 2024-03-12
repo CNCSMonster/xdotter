@@ -1,4 +1,4 @@
-use clap::{ArgAction, Error};
+use clap::ArgAction;
 use indoc::indoc;
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
@@ -26,7 +26,7 @@ struct LinkAction {
 impl LinkAction {
     fn from(path: &str, link: &str) -> Result<LinkAction, String> {
         // path内容应该为相对路径,所以需要转换为绝对路径
-        let path = match fs::canonicalize(&path) {
+        let path = match fs::canonicalize(path) {
             Ok(path) => path.to_string_lossy().into_owned(),
             Err(_) => {
                 return Err(format!("Path {} does not exist", &path));
