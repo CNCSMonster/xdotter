@@ -1,0 +1,7 @@
+subs = ["sub1", "sub2"]
+
+[links]
+zshrc = "/home/cncsmonster/.zshrc"
+yazi = "/home/cncsmonster/.config/yazi"
+go = "/home/cncsmonster/.config/go"
+vimrc = "/home/cncsmonster/.vimrc"
