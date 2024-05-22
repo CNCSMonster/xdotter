@@ -1,6 +1,6 @@
 [package]
 name = "xdotter"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 authors = ["cncsmonster <cncsmonster@163.com>"]
 description = "A simple dotfile manager"
@@ -9,7 +9,9 @@ repository = "https://github.com/cncsmonster/xdotter"
 
 
 [dependencies]
+anyhow = "1.0.86"
 clap = "4.5.2"
+dirs = "5.0.1"
 indoc = "2.0.4"
 maplit = "1.0.2"
 serde = { version = "1.0.197", features = ["derive"] }
