@@ -1,21 +1,20 @@
 extern crate xdotter;
-use clap::{ArgAction, ArgMatches};
+use anyhow::Error;
+use clap::{arg, Arg, ArgAction, ArgMatches, Command};
 use indoc::indoc;
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::os::unix::fs::symlink;
-use std::path::Path;
-use std::{collections::HashMap, path};
-use xdotter::{create_link, get_dry_run};
+use std::collections::HashMap;
+use std::fs::{self};
+use xdotter::*;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Config {
     /// dependencies,子成员的路径,每个子成员内部应该有配置
-    dependencies: HashMap<String, String>,
+    dependencies: Option<HashMap<String, String>>,
     /// 子成员路径',如果子成员路径存在,则在子成员路径中创建配置文件,左边为子成员路径,右边为目标链接创建路径
-    #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
-    links: HashMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    links: Option<HashMap<String, String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -25,53 +24,97 @@ enum LinkAction {
     Link(String),
 }
 
-fn new() {
+fn new_cmd() {
     let config = Config {
-        dependencies: hashmap! {
+        dependencies: Some(hashmap! {
             "go".to_string() => "testdata/go".to_string(),
-        },
-        links: hashmap! {
+        }),
+        links: Some(hashmap! {
             "testdata/mm".to_string() => "~/.cache/mm".to_string(),
-        },
+        }),
     };
     let config_str = toml::to_string(&config).unwrap();
-    fs::write("xdotter.toml", config_str).unwrap();
-    println!("Created xdotter.toml");
+    info!("creating xdotter.toml");
+    fs::write("xdotter.toml", config_str).unwrap_or_else(|e| {
+        fatal!("failed to write xdotter.toml: {}", e);
+    });
+    info!("Created xdotter.toml");
 }
 
-fn deploy(args: &ArgMatches) {
-    let dry_run = get_dry_run(args);
-    deploy_on(dry_run);
+fn deploy_cmd(am: &ArgMatches) {
+    let dry_run = get_dry_run(am);
+    let verbose = get_verbose(am);
+    let quiet = get_quiet(am);
+    let interactive = get_interactive(am);
+    let conf = get_start_config(am);
+    if verbose {
+        set_level(LogLevel::Trace);
+    } else {
+        set_level(LogLevel::Info);
+    }
+    if quiet {
+        set_level(LogLevel::Off);
+    }
+    if dry_run {
+        info!("running in dry-run mode");
+    }
+    if interactive {
+        info!("running in interactive mode");
+    }
+    set_dry_run_mode(dry_run);
+    set_interactive_mode(interactive);
+    deploy_on(&conf).unwrap_or_else(|e| {
+        error!("{}", e);
+    });
 }
 
-fn deploy_on(dry_run: bool) {
-    let config_str = fs::read_to_string("xdotter.toml").unwrap();
-    let config: Config = toml::from_str(&config_str).unwrap();
-    for (actual_path, link) in config.links {
-        if !dry_run {
-            create_link(&actual_path, &link).unwrap();
+fn deploy_on(conf: &str) -> Result<(), Error> {
+    let dry_run = on_dry_run_mode();
+    let config_str = fs::read_to_string(conf)?;
+    let config: Config = toml::from_str(&config_str)?;
+    if let Some(links) = config.links.as_ref() {
+        for (actual_path, link) in links {
+            info!("actual_path: {}, link: {}", actual_path, link);
+            if !dry_run {
+                create_symlink(actual_path, link).unwrap_or_else(|e| {
+                    error!("failed to create link: {}", e);
+                });
+            }
         }
     }
-    let current_dir = std::env::current_dir().unwrap();
-    for (dependency, path) in config.dependencies {
-        println!("dependency: {}, path: {}", dependency, path);
-        let path = current_dir.join(path);
-        // 切换路径
-        println!("entering {}", path.display());
-        std::env::set_current_dir(&path).unwrap();
-        deploy_on(dry_run);
-        // 切换回原路径
-        println!("leaving {}", path.display());
-        std::env::set_current_dir(&current_dir).unwrap();
+    let current_dir = std::env::current_dir()?;
+    if let Some(deps) = config.dependencies.as_ref() {
+        for (dependency, path) in deps {
+            info!("dependency: {}, path: {}", dependency, path);
+            let path = current_dir.join(path);
+            // 切换路径
+            info!("entering {}", path.display());
+            if let Err(e) = std::env::set_current_dir(&path) {
+                error!("failed to enter {}: {}", path.display(), e);
+                continue;
+            }
+            deploy_on(&format!("{}/xdotter.toml", path.display())).unwrap_or_else(|e| {
+                error!("{}", e);
+            });
+            info!("leaving {}", path.display());
+            std::env::set_current_dir(&current_dir).unwrap_or_else(|e| {
+                error!("failed to leave {}: {}", path.display(), e);
+            });
+        }
     }
+    Ok(())
 }
 
-fn main() {
-    // 使用clap作为命令行工具框架
-    let matches = clap::Command::new("xdotter")
-        .version("0.1.0")
+fn xdotter_cli() -> Command {
+    clap::Command::new("xdotter")
+        .version(env!("CARGO_PKG_VERSION"))
         .author("xdotter")
         .about("A simple tool to manage dotfiles")
+        .arg(arg!(-v --verbose "Print test information verbosely").required(false).action(ArgAction::SetTrue).global(true))
+        .arg(arg!(-q --quiet "Do not print any output").required(false).action(ArgAction::SetTrue).global(true))
+        .arg(Arg::new("dry-run").long("dry-run").short('d').action(ArgAction::SetTrue).required(false).global(true))
+        .arg(arg!(-c --config <config_file> "Specify the configuration file").required(false).global(true))
+        .arg(arg!(-i --interactive "Ask for confirmation while unsure").required(false).action(ArgAction::SetTrue).global(true))
         .subcommand(clap::Command::new("new").about("Create a new xdotter.toml file"))
         .subcommand(
             clap::Command::new("deploy")
@@ -80,19 +123,17 @@ fn main() {
                     and locate these symlinkes in the paths specified in the xdotter.toml file.
                     The actual file path should be relative to the xdotter.toml file,like ./vimrc
                     the link path can be absolute or relative to the home directory,like ~/.vimrc
-                "})
-                .arg(
-                    clap::Arg::new("dry-run")
-                        .long("dry-run")
-                        .short('d')
-                        .help("Print what would be done without doing it")
-                        .action(ArgAction::SetTrue),
-                ),
+                "}),
         )
-        .get_matches();
-    match matches.subcommand() {
-        Some(("new", _)) => new(),
-        Some(("deploy", args)) => deploy(args),
-        _ => println!("No subcommand was used"),
+}
+
+fn main() {
+    // 使用clap作为命令行工具框架
+    let cli = xdotter_cli();
+    let am = cli.get_matches();
+    match am.subcommand() {
+        Some(("new", _)) => new_cmd(),
+        Some(("deploy", sub_m)) => deploy_cmd(sub_m),
+        _ => info!("No subcommand was used"),
     }
 }
