@@ -46,14 +46,36 @@ pub fn create_symlink(actual_path: &str, link: &str) -> Result<(), Error> {
         }
 
         if on_interactive_mod() {
+            // 分别针对link是软链接/文件/目录的情况进行处理
+            let metadata = link.symlink_metadata()?;
+            if metadata.is_symlink() {
+                info!("link {} is a symlink", link.display());
+            } else if metadata.is_file() {
+                info!("link {} is a file", link.display());
+            } else if metadata.is_dir() {
+                info!("link {} is a directory", link.display());
+            } else {
+                info!(
+                    "link {} is not a symlink, file or directory",
+                    link.display()
+                );
+                info!("skipping link {}", link.display());
+                return Ok(());
+            }
             info!("link {} already exists, remove it? [y/n]", link.display());
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
             if input.trim() == "y" {
                 info!("removing link {}", link.display());
-                fs::remove_file(link).unwrap_or_else(|e| {
-                    error!("failed to remove link {}: {}", link.display(), e);
-                });
+                if metadata.is_dir() {
+                    fs::remove_dir_all(link).unwrap_or_else(|e| {
+                        error!("failed to remove link {}: {}", link.display(), e);
+                    });
+                } else {
+                    fs::remove_file(link).unwrap_or_else(|e| {
+                        error!("failed to remove link {}: {}", link.display(), e);
+                    });
+                }
             } else {
                 info!("skipping link {}", link.display());
                 return Ok(());
@@ -75,7 +97,24 @@ pub fn delete_symlink(link: &str) -> Result<(), Error> {
         info!("link {} not exists, skipping", link.display());
         return Ok(());
     }
+    if !link.symlink_metadata()?.file_type().is_symlink() {
+        info!("link {} is not a symlink, skipping", link.display());
+        return Ok(());
+    }
     info!("removing link {}", link.display());
-    fs::remove_file(link)?;
+    if on_interactive_mod() {
+        info!("remove link {}? [y/n]", link.display());
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        if input.trim() == "y" {
+            fs::remove_file(link)?;
+            info!("removed link {}", link.display());
+        } else {
+            info!("skipping link {}", link.display());
+        }
+    } else {
+        fs::remove_file(link)?;
+        info!("removed link {}", link.display());
+    }
     Ok(())
 }

@@ -1,12 +1,6 @@
-# xdotter: manage dotfiles like .zshrc, .vimrc, .gitconfig,.bashrc ...
+# xdotter: a simple dotfile manager
 
 ## Install
-
-Use cargo-binstall:
-
-```zsh
-cargo binstall xdotter
-```
 
 Use cargo:
 
@@ -14,7 +8,7 @@ Use cargo:
 cargo install xdotter
 ```
 
-From source:
+From github repo:
 
 ```zsh
 git clone github.com/cncsmonster/xdotter
@@ -29,6 +23,7 @@ echo 'xdotter is already installed in .cargo/bin/xdotter.'
 xdotter -h
 ```
 
+if want some example, you can check my [dotfiles](https://github.com/cncsmonster/dotfiles).
 
 ## License
 
