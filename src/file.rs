@@ -92,7 +92,13 @@ pub fn create_symlink(actual_path: &str, link: &str) -> Result<(), Error> {
 }
 
 pub fn delete_symlink(link: &str) -> Result<(), Error> {
-    let link = Path::new(link);
+    let home_dir = if dirs::home_dir().is_none() {
+        return Err(anyhow::anyhow!("home dir not found"));
+    } else {
+        dirs::home_dir().unwrap()
+    };
+    let link = link.replace('~', home_dir.to_str().unwrap());
+    let link = Path::new(&link);
     if !link.exists() {
         info!("link {} not exists, skipping", link.display());
         return Ok(());

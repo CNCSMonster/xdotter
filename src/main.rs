@@ -67,7 +67,7 @@ fn deploy_on(conf: &str) -> Result<(), Error> {
     let config: Config = toml::from_str(&config_str)?;
     if let Some(links) = config.links.as_ref() {
         for (actual_path, link) in links {
-            info!("actual_path: {}, link: {}", actual_path, link);
+            info!("deploy: {} -> {}", link, actual_path);
             if !dry_run {
                 create_symlink(actual_path, link).unwrap_or_else(|e| {
                     error!("failed to create link: {}", e);
@@ -120,7 +120,7 @@ fn undeploy_on(conf: &str) -> Result<(), Error> {
     let config: Config = toml::from_str(&config_str)?;
     if let Some(links) = config.links.as_ref() {
         for (actual_path, link) in links {
-            info!("actual_path: {}, link: {}", actual_path, link);
+            info!("undeploy: {} -> {}", link, actual_path);
             if !dry_run {
                 delete_symlink(link).unwrap_or_else(|e| {
                     error!("failed to delete link: {}", e);
@@ -131,20 +131,20 @@ fn undeploy_on(conf: &str) -> Result<(), Error> {
     let current_dir = std::env::current_dir()?;
     if let Some(deps) = config.dependencies.as_ref() {
         for (dependency, path) in deps {
-            info!("dependency: {}, path: {}", dependency, path);
+            debug!("dependency: {}, path: {}", dependency, path);
             let path = current_dir.join(path);
             if let Err(e) = std::env::set_current_dir(&path) {
                 error!("failed to enter {}: {}", path.display(), e);
                 continue;
             }
-            info!("entering {}", path.display());
+            debug!("entering {}", path.display());
             undeploy_on(&format!("{}/xdotter.toml", path.display())).unwrap_or_else(|e| {
                 error!("{}", e);
             });
             std::env::set_current_dir(&current_dir).unwrap_or_else(|e| {
                 error!("failed to leave {}: {}", path.display(), e);
             });
-            info!("leaving {}", path.display());
+            debug!("leaving {}", path.display());
         }
     }
     Ok(())
