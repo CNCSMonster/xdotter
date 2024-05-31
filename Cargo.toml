@@ -1,6 +1,6 @@
 [package]
 name = "xdotter"
-version = "0.0.5"
+version = "0.0.6"
 edition = "2021"
 authors = ["cncsmonster <cncsmonster@163.com>"]
 description = "A simple dotfile manager"

@@ -152,7 +152,7 @@ fn undeploy_on(conf: &str) -> Result<(), Error> {
 fn xdotter_cli() -> Command {
     let new_cmd = clap::Command::new("new").about("Create a new xdotter.toml file");
     let deploy_cmd = clap::Command::new("deploy").about(indoc! {"
-        Deploy the dotfiles according to the configuration file.
+        Deploy the dotfiles according to the configuration file. This is the default subcommand.
     "});
     let undeploy_cmd = clap::Command::new("undeploy").about(indoc! {"
         Delete all the symlinks created by the deploy command.
