@@ -1,5 +1,5 @@
 use super::*;
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 use std::io;
 use std::{fs, os::unix::fs::symlink, path::Path};
 
@@ -11,14 +11,14 @@ pub fn create_symlink(actual_path: &str, link: &str) -> Result<(), Error> {
     let home_dir = if dirs::home_dir().is_none() {
         return Err(anyhow::anyhow!("home dir not found"));
     } else {
-        dirs::home_dir().unwrap()
+        dirs::home_dir().ok_or(anyhow!("home dir not found"))?
     };
-    let link = link.replace('~', home_dir.to_str().unwrap());
+    let link = link.replace('~', home_dir.to_str().ok_or(anyhow!("home dir not found"))?);
     info!("link: {}", link);
     // 化简路径
     let link = Path::new(&link);
     // 获取link的目录,保证link的目录存在
-    let link_dir = link.parent().unwrap();
+    let link_dir = link.parent().ok_or(anyhow!("link parent not valid"))?;
     if !link_dir.exists() {
         info!("link_dir {} not exists, creating", link_dir.display());
         fs::create_dir_all(link_dir).unwrap_or_else(|e| {
@@ -95,9 +95,9 @@ pub fn delete_symlink(link: &str) -> Result<(), Error> {
     let home_dir = if dirs::home_dir().is_none() {
         return Err(anyhow::anyhow!("home dir not found"));
     } else {
-        dirs::home_dir().unwrap()
+        dirs::home_dir().ok_or(anyhow::anyhow!("home dir not found"))?
     };
-    let link = link.replace('~', home_dir.to_str().unwrap());
+    let link = link.replace('~', home_dir.to_str().ok_or(anyhow!("home dir not found"))?);
     let link = Path::new(&link);
     if !link.exists() {
         info!("link {} not exists, skipping", link.display());

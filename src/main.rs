@@ -1,6 +1,7 @@
 extern crate xdotter;
-use anyhow::Error;
+use anyhow::{anyhow, Error, Ok, Result};
 use clap::{arg, Arg, ArgAction, ArgMatches, Command};
+use clap_complete::Shell;
 use indoc::indoc;
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
@@ -24,7 +25,7 @@ enum LinkAction {
     Link(String),
 }
 
-fn new_cmd() {
+fn new_cmd()->Result<()> {
     let config = Config {
         dependencies: Some(hashmap! {
             "go".to_string() => "testdata/go".to_string(),
@@ -39,9 +40,10 @@ fn new_cmd() {
         error!("failed to create xdotter.toml: {}", e);
     });
     info!("Created xdotter.toml");
+    Ok(())
 }
 
-fn deploy_cmd(am: &ArgMatches) {
+fn deploy_cmd(am: &ArgMatches) ->Result<()>{
     info!("deploying...");
     let dry_run = get_dry_run(am);
     let interactive = get_interactive(am);
@@ -58,9 +60,10 @@ fn deploy_cmd(am: &ArgMatches) {
     deploy_on(&conf).unwrap_or_else(|e| {
         error!("{e}");
     });
+    Ok(())
 }
 
-fn deploy_on(conf: &str) -> Result<(), Error> {
+fn deploy_on(conf: &str) -> Result<()> {
     info!("deploying on {}", conf);
     let dry_run = on_dry_run_mode();
     let config_str = fs::read_to_string(conf)?;
@@ -96,7 +99,7 @@ fn deploy_on(conf: &str) -> Result<(), Error> {
     }
     Ok(())
 }
-fn undeploy_cmd(am: &ArgMatches) {
+fn undeploy_cmd(am: &ArgMatches) ->Result<()>{
     info!("undeploying...");
     let dry_run = get_dry_run(am);
     let interactive = get_interactive(am);
@@ -112,6 +115,7 @@ fn undeploy_cmd(am: &ArgMatches) {
     undeploy_on(&conf).unwrap_or_else(|e| {
         error!("{e}");
     });
+    Ok(())
 }
 fn undeploy_on(conf: &str) -> Result<(), Error> {
     info!("undeploying on {}", conf);
@@ -149,6 +153,14 @@ fn undeploy_on(conf: &str) -> Result<(), Error> {
     }
     Ok(())
 }
+fn completions_cmd(am:&ArgMatches)->Result<()>{
+    let shell=am.get_one::<Shell>("shell").ok_or_else(||anyhow!("Shell name missing")).unwrap();
+    let mut cli=xdotter_cli();
+    let bin_name=cli.get_name().to_string();
+    clap_complete::generate(*shell, &mut cli, bin_name, &mut std::io::stdout().lock());
+    Ok(())
+}
+
 fn xdotter_cli() -> Command {
     let new_cmd = clap::Command::new("new").about("Create a new xdotter.toml file");
     let deploy_cmd = clap::Command::new("deploy").about(indoc! {"
@@ -157,6 +169,9 @@ fn xdotter_cli() -> Command {
     let undeploy_cmd = clap::Command::new("undeploy").about(indoc! {"
         Delete all the symlinks created by the deploy command.
     "});
+    let completions_cmd = clap::Command::new("completions")
+        .arg(arg!(-s --shell <shell> "Specify the shell to generate completions for").value_parser(clap::value_parser!(Shell)).required(true))
+        .about("Generate shell completions");
     clap::Command::new("xdotter")
         .version(env!("CARGO_PKG_VERSION"))
         .author("xdotter")
@@ -192,7 +207,7 @@ fn xdotter_cli() -> Command {
                 .action(ArgAction::SetTrue)
                 .global(true),
         )
-        .subcommands(vec![new_cmd, deploy_cmd, undeploy_cmd])
+        .subcommands(vec![new_cmd, deploy_cmd, undeploy_cmd, completions_cmd])
 }
 
 fn main() {
@@ -215,6 +230,10 @@ fn main() {
         Some(("new", _)) => new_cmd(),
         Some(("deploy", sub_m)) => deploy_cmd(sub_m),
         Some(("undeploy", sub_m)) => undeploy_cmd(sub_m),
-        _ => info!("No subcommand was used"),
-    }
+        Some(("completions",sub_m))=>completions_cmd(sub_m),
+        Some((_, sub_m)) => deploy_cmd(sub_m),
+        None => deploy_cmd(&am),
+    }.unwrap_or_else(|e|{
+        panic!("{e}");
+    });
 }
