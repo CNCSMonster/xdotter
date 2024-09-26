@@ -39,7 +39,7 @@ jobs:
         run: |
           mkdir $RELEASE_NAME
           cp $ARTIFACTS_DIR/xdotter -t $RELEASE_NAME
-          cp readme.md LICENSE -t $RELEASE_NAME
+          cp README.md LICENSE -t $RELEASE_NAME
           tar -zcvf $RELEASE_NAME.${{ matrix.archive }} -C $RELEASE_NAME .
 
       - name: Release
