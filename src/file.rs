@@ -4,9 +4,10 @@ use std::io;
 use std::{fs, os::unix::fs::symlink, path::Path};
 
 // 创建路径为link的软链接到actual_path
-pub fn create_symlink(actual_path: &str, link: &str) -> Result<(), Error> {
+pub fn create_symlink(actual_path: &str, link: &str) -> anyhow::Result<()> {
     // 获取actual_path的绝对路径
-    let actual_path = std::fs::canonicalize(actual_path)?;
+    let actual_path = std::fs::canonicalize(actual_path)
+        .map_err(|e| anyhow!("failed to get absolute path of actual path {actual_path}:{e}"))?;
     // 获取link的绝对路径
     let home_dir = if dirs::home_dir().is_none() {
         return Err(anyhow::anyhow!("home dir not found"));
