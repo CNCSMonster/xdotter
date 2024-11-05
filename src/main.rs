@@ -25,7 +25,7 @@ enum LinkAction {
     Link(String),
 }
 
-fn new_cmd()->Result<()> {
+fn new_cmd() -> Result<()> {
     let config = Config {
         dependencies: Some(hashmap! {
             "go".to_string() => "testdata/go".to_string(),
@@ -43,7 +43,7 @@ fn new_cmd()->Result<()> {
     Ok(())
 }
 
-fn deploy_cmd(am: &ArgMatches) ->Result<()>{
+fn deploy_cmd(am: &ArgMatches) -> Result<()> {
     info!("deploying...");
     let dry_run = get_dry_run(am);
     let interactive = get_interactive(am);
@@ -99,7 +99,7 @@ fn deploy_on(conf: &str) -> Result<()> {
     }
     Ok(())
 }
-fn undeploy_cmd(am: &ArgMatches) ->Result<()>{
+fn undeploy_cmd(am: &ArgMatches) -> Result<()> {
     info!("undeploying...");
     let dry_run = get_dry_run(am);
     let interactive = get_interactive(am);
@@ -153,10 +153,13 @@ fn undeploy_on(conf: &str) -> Result<(), Error> {
     }
     Ok(())
 }
-fn completions_cmd(am:&ArgMatches)->Result<()>{
-    let shell=am.get_one::<Shell>("shell").ok_or_else(||anyhow!("Shell name missing")).unwrap();
-    let mut cli=xdotter_cli();
-    let bin_name=cli.get_name().to_string();
+fn completions_cmd(am: &ArgMatches) -> Result<()> {
+    let shell = am
+        .get_one::<Shell>("shell")
+        .ok_or_else(|| anyhow!("Shell name missing"))
+        .unwrap();
+    let mut cli = xdotter_cli();
+    let bin_name = cli.get_name().to_string();
     clap_complete::generate(*shell, &mut cli, bin_name, &mut std::io::stdout().lock());
     Ok(())
 }
@@ -170,7 +173,11 @@ fn xdotter_cli() -> Command {
         Delete all the symlinks created by the deploy command.
     "});
     let completions_cmd = clap::Command::new("completions")
-        .arg(arg!(-s --shell <shell> "Specify the shell to generate completions for").value_parser(clap::value_parser!(Shell)).required(true))
+        .arg(
+            arg!(-s --shell <shell> "Specify the shell to generate completions for")
+                .value_parser(clap::value_parser!(Shell))
+                .required(true),
+        )
         .about("Generate shell completions");
     clap::Command::new("xdotter")
         .version(env!("CARGO_PKG_VERSION"))
@@ -230,10 +237,11 @@ fn main() {
         Some(("new", _)) => new_cmd(),
         Some(("deploy", sub_m)) => deploy_cmd(sub_m),
         Some(("undeploy", sub_m)) => undeploy_cmd(sub_m),
-        Some(("completions",sub_m))=>completions_cmd(sub_m),
+        Some(("completions", sub_m)) => completions_cmd(sub_m),
         Some((_, sub_m)) => deploy_cmd(sub_m),
         None => deploy_cmd(&am),
-    }.unwrap_or_else(|e|{
+    }
+    .unwrap_or_else(|e| {
         panic!("{e}");
     });
 }
