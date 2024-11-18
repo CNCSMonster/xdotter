@@ -12,6 +12,9 @@ pub fn get_verbose(args: &clap::ArgMatches) -> bool {
 pub fn get_interactive(args: &clap::ArgMatches) -> bool {
     args.get_flag("interactive")
 }
+pub fn get_force(args: &clap::ArgMatches) -> bool {
+    args.get_flag("force")
+}
 
 pub fn get_start_config(args: &clap::ArgMatches) -> String {
     args.get_one::<String>("config")
