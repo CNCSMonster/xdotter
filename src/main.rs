@@ -43,20 +43,28 @@ fn new_cmd() -> Result<()> {
     Ok(())
 }
 
-fn deploy_cmd(am: &ArgMatches) -> Result<()> {
-    info!("deploying...");
+fn init_mode(am: &ArgMatches) {
     let dry_run = get_dry_run(am);
     let interactive = get_interactive(am);
-    let conf = get_start_config(am);
-
+    let force = get_force(am);
     if dry_run {
         info!("running in dry-run mode");
     }
     if interactive {
         info!("running in interactive mode");
     }
+    if force {
+        info!("running in force mode");
+    }
     set_dry_run_mode(dry_run);
     set_interactive_mode(interactive);
+    set_force_mode(force);
+}
+
+fn deploy_cmd(am: &ArgMatches) -> Result<()> {
+    info!("deploying...");
+    init_mode(am);
+    let conf = get_start_config(am);
     deploy_on(&conf).unwrap_or_else(|e| {
         error!("{e}");
     });
@@ -99,24 +107,17 @@ fn deploy_on(conf: &str) -> Result<()> {
     }
     Ok(())
 }
+
 fn undeploy_cmd(am: &ArgMatches) -> Result<()> {
     info!("undeploying...");
-    let dry_run = get_dry_run(am);
-    let interactive = get_interactive(am);
+    init_mode(am);
     let conf = get_start_config(am);
-    if dry_run {
-        info!("running in dry-run mode");
-    }
-    if interactive {
-        info!("running in interactive mode");
-    }
-    set_dry_run_mode(dry_run);
-    set_interactive_mode(interactive);
     undeploy_on(&conf).unwrap_or_else(|e| {
         error!("{e}");
     });
     Ok(())
 }
+
 fn undeploy_on(conf: &str) -> Result<(), Error> {
     info!("undeploying on {}", conf);
     let dry_run = on_dry_run_mode();
@@ -153,6 +154,7 @@ fn undeploy_on(conf: &str) -> Result<(), Error> {
     }
     Ok(())
 }
+
 fn completions_cmd(am: &ArgMatches) -> Result<()> {
     let shell = am
         .get_one::<Shell>("shell")
@@ -213,6 +215,13 @@ fn xdotter_cli() -> Command {
                 .required(false)
                 .action(ArgAction::SetTrue)
                 .global(true),
+        )
+        .arg(
+            arg!(-f --force "if conflict with exist files,just remove it")
+                .required(false)
+                .action(ArgAction::SetTrue)
+                .global(true)
+                .conflicts_with_all(["interactive"]),
         )
         .subcommands(vec![new_cmd, deploy_cmd, undeploy_cmd, completions_cmd])
 }

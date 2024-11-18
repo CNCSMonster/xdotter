@@ -1,5 +1,5 @@
 use super::*;
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow, bail, Error};
 use std::io;
 use std::{fs, os::unix::fs::symlink, path::Path};
 
@@ -46,46 +46,53 @@ pub fn create_symlink(actual_path: &str, link: &str) -> anyhow::Result<()> {
             }
         }
 
+        let metadata = link.symlink_metadata()?;
+        if metadata.is_symlink() {
+            info!("link {} is a symlink", link.display());
+        } else if metadata.is_file() {
+            info!("link {} is a file", link.display());
+        } else if metadata.is_dir() {
+            info!("link {} is a directory", link.display());
+        } else {
+            info!(
+                "link {} is not a symlink, file or directory",
+                link.display()
+            );
+            info!("skipping link {}", link.display());
+            return Ok(());
+        }
+        fn rm_entry(metadata: &fs::Metadata, p: &Path) -> anyhow::Result<()> {
+            info!("removing entry {}", p.display());
+            if metadata.is_dir() {
+                fs::remove_dir_all(p).inspect_err(|e| {
+                    error!("failed to remove p {}: {}", p.display(), e);
+                })
+            } else {
+                fs::remove_file(p).inspect_err(|e| {
+                    error!("failed to remove p {}: {}", p.display(), e);
+                })
+            }?;
+            Ok(())
+        }
         if on_interactive_mod() {
             // 分别针对link是软链接/文件/目录的情况进行处理
-            let metadata = link.symlink_metadata()?;
-            if metadata.is_symlink() {
-                info!("link {} is a symlink", link.display());
-            } else if metadata.is_file() {
-                info!("link {} is a file", link.display());
-            } else if metadata.is_dir() {
-                info!("link {} is a directory", link.display());
-            } else {
-                info!(
-                    "link {} is not a symlink, file or directory",
-                    link.display()
-                );
-                info!("skipping link {}", link.display());
-                return Ok(());
-            }
             info!("link {} already exists, remove it? [y/n]", link.display());
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
             if input.trim() == "y" {
-                info!("removing link {}", link.display());
-                if metadata.is_dir() {
-                    fs::remove_dir_all(link).unwrap_or_else(|e| {
-                        error!("failed to remove link {}: {}", link.display(), e);
-                    });
-                } else {
-                    fs::remove_file(link).unwrap_or_else(|e| {
-                        error!("failed to remove link {}: {}", link.display(), e);
-                    });
-                }
+                rm_entry(&metadata, link)?;
             } else {
                 info!("skipping link {}", link.display());
                 return Ok(());
             }
+        } else if on_force_mode() {
+            info!("link {} already exists, try remove it", link.display());
+            rm_entry(&metadata, link)?;
         } else {
-            info!("link {} already exists, removing", link.display());
-            fs::remove_file(link).unwrap_or_else(|e| {
-                error!("failed to remove link {}: {}", link.display(), e);
-            });
+            bail!(
+                "path {} has been taken,can't create symlink,please use --force / --interactive",
+                link.display()
+            );
         }
     }
     symlink(actual_path, link)?;

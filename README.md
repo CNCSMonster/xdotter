@@ -8,6 +8,11 @@ Use cargo:
 cargo install xdotter
 ```
 
+Use cargo-binstall:
+```
+cargo binstall xdotter
+```
+
 From github repo:
 
 ```zsh
