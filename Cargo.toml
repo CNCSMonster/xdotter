@@ -1,19 +1,16 @@
 [package]
 name = "xdotter"
-version = "0.0.10"
+version = "0.0.11"
 edition = "2021"
 authors = ["cncsmonster <cncsmonster@163.com>"]
 description = "A simple dotfile manager"
 license = "MIT"
 repository = "https://github.com/cncsmonster/xdotter"
 
-[[bin]]
-name = "xdotter"
-path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.86"
-clap = { version = "4.5.2", features = ["cargo", "wrap_help"] }
+clap = { version = "4.5.2", features = ["cargo", "wrap_help","derive"] }
 clap_complete = "4.5.5"
 dirs = "5.0.1"
 env_logger = "0.11.3"
