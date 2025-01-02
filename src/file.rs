@@ -1,10 +1,23 @@
-use super::*;
-use anyhow::{anyhow, bail, Error};
+use anyhow::{anyhow, bail, Result};
+use log::{error, info};
+use std::fs;
 use std::io;
-use std::{fs, os::unix::fs::symlink, path::Path};
+use std::path::Path;
+
+#[cfg(unix)]
+use std::os::unix::fs::symlink as create_symlink_impl;
+
+#[cfg(windows)]
+use std::os::windows::fs::symlink_file as create_symlink_impl;
+
+#[cfg(windows)]
+use std::os::windows::fs::symlink_dir as create_symlink_dir_impl;
+
+use crate::on_force_mode;
+use crate::on_interactive_mod;
 
 // 创建路径为link的软链接到actual_path
-pub fn create_symlink(actual_path: &str, link: &str) -> anyhow::Result<()> {
+pub fn create_symlink(actual_path: &str, link: &str) -> Result<()> {
     // 获取actual_path的绝对路径
     let actual_path = std::fs::canonicalize(actual_path)
         .map_err(|e| anyhow!("failed to get absolute path of actual path {actual_path}:{e}"))?;
@@ -61,7 +74,7 @@ pub fn create_symlink(actual_path: &str, link: &str) -> anyhow::Result<()> {
             info!("skipping link {}", link.display());
             return Ok(());
         }
-        fn rm_entry(metadata: &fs::Metadata, p: &Path) -> anyhow::Result<()> {
+        fn rm_entry(metadata: &fs::Metadata, p: &Path) -> Result<()> {
             info!("removing entry {}", p.display());
             if metadata.is_dir() {
                 fs::remove_dir_all(p).inspect_err(|e| {
@@ -95,11 +108,25 @@ pub fn create_symlink(actual_path: &str, link: &str) -> anyhow::Result<()> {
             );
         }
     }
-    symlink(actual_path, link)?;
+
+    #[cfg(unix)]
+    create_symlink_impl(actual_path, link)?;
+
+    #[cfg(windows)]
+    {
+        if actual_path.is_file() {
+            create_symlink_impl(actual_path, link)?;
+        } else if actual_path.is_dir() {
+            create_symlink_dir_impl(actual_path, link)?;
+        } else {
+            bail!("Unsupported file type for symlink creation on Windows");
+        }
+    }
+
     Ok(())
 }
 
-pub fn delete_symlink(link: &str) -> Result<(), Error> {
+pub fn delete_symlink(link: &str) -> Result<()> {
     let home_dir = if dirs::home_dir().is_none() {
         return Err(anyhow::anyhow!("home dir not found"));
     } else {
