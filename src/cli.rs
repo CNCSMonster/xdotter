@@ -2,6 +2,7 @@ use clap::{Args, Parser, Subcommand};
 use clap_complete::Shell;
 
 #[derive(Debug, Parser)]
+#[command(version, about)]
 pub struct XdotterCli {
     #[command(subcommand)]
     pub subcommand: Option<Action>,
