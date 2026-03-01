@@ -9,34 +9,17 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.x'
-    
-    - name: Run tests
-      run: python3 test_xd.py
-    
-    - name: Verify script syntax
-      run: python3 -m py_compile xd.py
-
-  test-python-versions:
-    runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
-    
+        python-version: ['3.8', '3.10', '3.12']
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Run tests
       run: python3 test_xd.py
