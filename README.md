@@ -2,38 +2,54 @@
 
 A **zero-dependency**, **single-file** dotfile manager written in Python. No build tools, no package managers—just download and run.
 
+**Now with robust TOML parsing powered by [tomli](https://github.com/hukkin/tomli)!**
+
 ## Features
 
-- ✅ **Zero dependencies** - Uses Python standard library only
-- ✅ **Single file** - Easy to distribute and understand
+- ✅ **Zero dependencies** - Uses Python standard library + vendored tomli
+- ✅ **Single file** - Easy to distribute and understand (79KB .pyz)
 - ✅ **Cross-platform** - Works on Linux, macOS, and Windows (with Python)
 - ✅ **No installation required** - Run directly or install with one command
 - ✅ **Fast & Simple** - Minimal overhead, easy to configure
+- ✅ **Robust TOML parsing** - Full TOML v1.0 compliance via embedded tomli
 
 ## Quick Start
 
-### Option 1: Install (Recommended)
+### Option 1: Download Single File (Recommended)
 
 ```bash
-# Downloads to ~/.local/bin/xd
-curl -sSL https://raw.githubusercontent.com/cncsmonster/xdotter/main/install.sh | bash
+# Download the single-file executable (79KB .pyz)
+curl -sSL https://raw.githubusercontent.com/cncsmonster/xdotter/main/xd.pyz -o ~/.local/bin/xd
+chmod +x ~/.local/bin/xd
 
 # Add to PATH (if not already)
 export PATH="$HOME/.local/bin:$PATH"
+
+# Use it
+xd --help
 ```
 
-### Option 2: Download & Run Directly
+### Option 2: Download from Releases
 
 ```bash
-# Download the script
-curl -sSL https://raw.githubusercontent.com/cncsmonster/xdotter/main/xd.py -o xd.py
-chmod +x xd.py
-
-# Run it
-./xd.py --help
+# Download from GitHub Releases
+curl -L https://github.com/cncsmonster/xdotter/releases/latest/download/xd.pyz -o ~/.local/bin/xd
+chmod +x ~/.local/bin/xd
 ```
 
-### Option 3: Clone Repository
+### Option 3: Download & Run Directly (Source)
+
+```bash
+# Download the Python script (requires _vendor/ directory)
+curl -sSL https://raw.githubusercontent.com/cncsmonster/xdotter/main/xd.py -o xd.py
+
+# Also need vendored dependencies
+git clone https://github.com/cncsmonster/xdotter.git
+cd xdotter
+python3 xd.py --help
+```
+
+### Option 4: Clone Repository (Development)
 
 ```bash
 git clone https://github.com/cncsmonster/xdotter.git
@@ -138,13 +154,31 @@ The previous Rust version required:
 This Python version:
 - ✅ Works wherever Python 3 exists (pre-installed on most systems)
 - ✅ No compilation needed
-- ✅ Single file, easy to audit and modify
+- ✅ Single file (.pyz), easy to distribute
 - ✅ Download and use immediately
+- ✅ Robust TOML parsing with embedded tomli
 
 ## Requirements
 
-- Python 3.6+
+- Python 3.8+ (required by vendored tomli)
 - Unix-like system (Linux, macOS) or Windows with Python
+
+**Note:** Python 3.11+ has a built-in `tomllib`; this project uses **vendored [tomli](https://github.com/hukkin/tomli)** so it works on **Python 3.8, 3.9, 3.10** without any standard-library TOML. CI runs on 3.8, 3.10, and 3.12 to verify.
+
+## What about the .pyz file?
+
+The `.pyz` file is a **single-file executable Python archive** (PEP 441). It:
+- ✅ Contains all code and dependencies (including tomli)
+- ✅ Runs with any Python 3.8+ interpreter
+- ✅ Is completely transparent (it's just a zip file)
+- ✅ Can be inspected with `unzip -l xd.pyz`
+- ✅ Works exactly like a `.py` file: `python3 xd.pyz deploy`
+
+**Why .pyz instead of .py?**
+- Building `.pyz` is **1 command**: `python -m zipapp ...`
+- Manually merging code is **very complex** (import handling, namespaces, etc.)
+- `.pyz` is **industry standard** (used by pip, shiv, etc.)
+- User experience is **identical**: download → run
 
 ## Testing
 
@@ -178,7 +212,21 @@ Test with isolated environment using bubblewrap:
 
 This runs a complete deployment test of `cncsmonster/dotfiles` in an isolated sandbox.
 
-See [TEST_REPORT.md](TEST_REPORT.md) for detailed results.
+## Building the single-file (xd.pyz)
+
+From the repo root (with `xd.py` and `_vendor/tomli/` present):
+
+```bash
+python3 -c "
+import zipapp, tempfile, shutil
+from pathlib import Path
+with tempfile.TemporaryDirectory() as tmpdir:
+    p = Path(tmpdir)
+    shutil.copy('xd.py', p / 'xd.py')
+    shutil.copytree('_vendor', p / '_vendor')
+    zipapp.create_archive(p, 'xd.pyz', '/usr/bin/env python3', 'xd:main')
+"
+```
 
 ## License
 

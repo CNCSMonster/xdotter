@@ -43,3 +43,11 @@ Thumbs.db
 target/
 Cargo.lock
 Cargo.toml
+
+# Vendored libraries (keep tomli source so Python <3.11 works without tomllib)
+_vendor/*
+!_vendor/.gitkeep
+!_vendor/__init__.py
+!_vendor/README.md
+!_vendor/tomli/
+!_vendor/tomli/**
