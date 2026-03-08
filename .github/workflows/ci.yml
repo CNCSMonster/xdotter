@@ -14,12 +14,22 @@ jobs:
         python-version: ['3.8', '3.10', '3.12']
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Run tests
-      run: python3 test_xd.py
+      - name: Ensure vendored tomli is present (required for Python <3.11)
+        run: |
+          if [ ! -f _vendor/tomli/__init__.py ]; then
+            echo "::error::Missing _vendor/tomli. Run ./scripts/vendor-tomli.sh and commit _vendor/."
+            exit 1
+          fi
+
+      - name: Install bubblewrap (for isolated test run)
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+
+      - name: Run tests (isolated with bwrap)
+        run: ./scripts/run-tests-isolated.sh
