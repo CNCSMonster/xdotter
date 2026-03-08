@@ -25,66 +25,38 @@ Options:
 import os
 import sys
 import argparse
-import configparser
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-VERSION = "0.1.0"
+# Add vendor directory for tomli
+_vendor_path = Path(__file__).parent / '_vendor'
+if str(_vendor_path) not in sys.path:
+    sys.path.insert(0, str(_vendor_path))
+
+from tomli import loads
+
+VERSION = "0.2.0"
 
 
 class ConfigParser:
-    """Simple TOML parser for xdotter.toml format"""
+    """TOML parser using embedded tomli for robust parsing"""
 
     @staticmethod
     def parse(content: str) -> Dict:
-        """Parse TOML content into a dictionary"""
-        result = {"links": {}, "dependencies": {}}
-        current_section = None
-
-        for line in content.split("\n"):
-            line = line.strip()
-
-            # Skip empty lines and comments
-            if not line or line.startswith("#"):
-                continue
-
-            # Section header
-            if line.startswith("["):
-                section = line.strip("[]").strip()
-                if section == "links":
-                    current_section = "links"
-                elif section == "dependencies":
-                    current_section = "dependencies"
-                else:
-                    current_section = section
-                continue
-
-            # Key-value pair
-            if "=" in line and current_section:
-                key, value = line.split("=", 1)
-                key = key.strip().strip('"').strip("'")
-                value = value.strip()
-                
-                # Remove inline comments (but not inside quotes)
-                # Simple approach: if value starts with quote, find matching end quote
-                if value.startswith('"'):
-                    # Find closing quote
-                    end_quote = value.find('"', 1)
-                    if end_quote != -1:
-                        value = value[1:end_quote]
-                elif value.startswith("'"):
-                    # Find closing quote
-                    end_quote = value.find("'", 1)
-                    if end_quote != -1:
-                        value = value[1:end_quote]
-                else:
-                    # No quotes, remove inline comment
-                    if "#" in value:
-                        value = value.split("#")[0].strip()
-                
-                result[current_section][key] = value
-
-        return result
+        """
+        Parse TOML content using tomli.
+        
+        Args:
+            content: TOML content as string
+            
+        Returns:
+            Dictionary with 'links' and 'dependencies' keys
+        """
+        raw_data = loads(content)
+        return {
+            "links": raw_data.get("links", {}),
+            "dependencies": raw_data.get("dependencies", {})
+        }
 
 
 def get_home_dir() -> Path:
