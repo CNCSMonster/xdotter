@@ -51,3 +51,5 @@ _vendor/*
 !_vendor/README.md
 !_vendor/tomli/
 !_vendor/tomli/**
+# Do not commit bytecode (CI runs multiple Python versions)
+_vendor/tomli/__pycache__/

@@ -188,6 +188,8 @@ Run the test suite to verify all functionality:
 python3 test_xd.py
 ```
 
+**Python 3.8–3.12** compatibility (including 3.8/3.10 without standard-library `tomllib`) is verified in **CI** on every push; see [.github/workflows/ci.yml](.github/workflows/ci.yml).
+
 **Test Coverage (32 tests):**
 
 | Category | Tests |
