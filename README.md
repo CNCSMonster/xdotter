@@ -105,6 +105,44 @@ xd undeploy -i
 | `-n, --dry-run` | Show what would be done without making changes |
 | `-i, --interactive` | Ask for confirmation when unsure |
 | `-f, --force` | Force overwrite existing files |
+| `--check-permissions` | Check permissions for sensitive files (SSH, GPG, etc.) |
+| `--fix-permissions` | Fix permissions for sensitive files |
+
+### Permission Checking
+
+xdotter can check and fix permissions for sensitive files based on their target location:
+
+```bash
+# Check permissions for sensitive files
+xd deploy --check-permissions
+
+# Check and fix permissions
+xd deploy --fix-permissions
+
+# Dry-run to see what would be fixed
+xd deploy --fix-permissions -n
+```
+
+**Supported sensitive paths:**
+
+| Path | Required Permission | Description |
+|------|---------------------|-------------|
+| `~/.ssh/` | 700 | SSH directory |
+| `~/.ssh/id_rsa`, `id_ed25519`, etc. | 600 | SSH private keys |
+| `~/.ssh/authorized_keys` | 600 | SSH authorized keys |
+| `~/.gnupg/` | 700 | GPG directory |
+| `~/.gnupg/private-keys-v1.d/` | 700 | GPG private keys directory |
+| `~/.netrc` | 600 | Netrc password file |
+| `~/.pgpass` | 600 | PostgreSQL password file |
+
+**Filename patterns:**
+
+Files matching these patterns are automatically detected as sensitive:
+
+- `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*` - SSH private keys
+- `*_rsa`, `*_ed25519`, `*_ecdsa`, `*_dsa` - Named SSH private keys
+- `*.pem`, `*.key` - Certificate/key files
+- `*.gpg`, `*.asc` - GPG files
 
 ## Configuration
 
@@ -190,7 +228,7 @@ python3 test_xd.py
 
 **Python 3.8–3.12** compatibility (including 3.8/3.10 without standard-library `tomllib`) is verified in **CI** on every push; see [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
-**Test Coverage (32 tests):**
+**Test Coverage (37 tests):**
 
 | Category | Tests |
 |----------|-------|
@@ -203,6 +241,7 @@ python3 test_xd.py
 | Edge Cases | nonexistent source/config, invalid TOML, empty config |
 | Special Cases | unicode paths, absolute paths, existing symlink |
 | Dependencies | subdirectory deployment |
+| Permission Check | SSH key detection, fix, correct permission, pattern matching, dry-run |
 
 ## Container Testing
 

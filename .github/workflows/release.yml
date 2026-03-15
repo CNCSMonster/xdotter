@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for git describe
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Get version from tag
+        id: version
+        run: |
+          # Remove 'v' prefix from tag
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+      
+      - name: Build xd.pyz
+        env:
+          XD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python3 -c "
+          import zipapp
+          import tempfile
+          import shutil
+          from pathlib import Path
+          
+          with tempfile.TemporaryDirectory() as tmpdir:
+              p = Path(tmpdir)
+              
+              # Copy main script
+              shutil.copy('xd.py', p / 'xd.py')
+              
+              # Copy _vendor, excluding __pycache__ and .pyc files
+              shutil.copytree(
+                  '_vendor', 
+                  p / '_vendor',
+                  ignore=shutil.ignore_patterns('__pycache__', '*.pyc')
+              )
+              
+              # Create the zipapp
+              zipapp.create_archive(
+                  p, 
+                  'xd.pyz', 
+                  '/usr/bin/env python3', 
+                  'xd:main'
+              )
+          "
+          
+          chmod +x xd.pyz
+          
+          # Verify build
+          python3 xd.pyz --version
+          ls -lh xd.pyz
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: xd.pyz
+          generate_release_notes: true
+          body: |
+            ## Installation
+            
+            ```bash
+            curl -sSL https://raw.githubusercontent.com/cncsmonster/xdotter/main/install.sh | bash
+            ```
+            
+            Or download directly:
+            ```bash
+            curl -sSL https://github.com/cncsmonster/xdotter/releases/download/v${{ steps.version.outputs.version }}/xd.pyz -o ~/.local/bin/xd
+            chmod +x ~/.local/bin/xd
+            ```

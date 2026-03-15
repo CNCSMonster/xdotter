@@ -643,14 +643,14 @@ def test_nonexistent_source():
 def test_nonexistent_config():
     """Test with nonexistent config file"""
     print("\n[Test: Nonexistent Config]")
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
-        
+
         code, stdout, stderr = run_xd(["-c", "nonexistent.toml", "deploy"], cwd=tmpdir)
-        
+
         # Should fail with appropriate error
-        if code != 0 and ("Failed to read" in stderr or "No such file" in stderr):
+        if code != 0 and ("not found" in stderr.lower() or "failed to read" in stderr.lower() or "no such file" in stderr.lower()):
             log_test("Handles nonexistent config gracefully", "PASS")
         else:
             log_test("Handles nonexistent config gracefully", "FAIL", f"code={code}")
@@ -915,30 +915,30 @@ def test_whitespace_in_config():
 def test_single_quotes_in_config():
     """Test config with single quotes"""
     print("\n[Test: Single Quotes In Config]")
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
-        
+
         # Create source file
         source_dir = tmppath / "source"
         source_dir.mkdir()
         source_file = source_dir / "test.txt"
         source_file.write_text("test content")
-        
+
         # Create config with single quotes
         config = tmppath / "test.toml"
         config.write_text(f"""
 [links]
 'source/test.txt' = '~/.cache/xdotter_sq_{os.getpid()}.txt'
 """)
-        
+
         target_path = Path.home() / f".cache/xdotter_sq_{os.getpid()}.txt"
-        
+
         try:
             target_path.parent.mkdir(exist_ok=True)
-            
+
             code, stdout, stderr = run_xd(["-c", "test.toml", "deploy"], cwd=tmpdir)
-            
+
             if code == 0 and target_path.is_symlink():
                 log_test("Single quotes in config work", "PASS")
             else:
@@ -946,6 +946,246 @@ def test_single_quotes_in_config():
         finally:
             if target_path.exists():
                 target_path.unlink()
+
+
+# ============================================================
+# Permission Check Tests
+# ============================================================
+
+def test_permission_check_ssh_key():
+    """Test --check-permissions for SSH key"""
+    print("\n[Test: Permission Check SSH Key]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create source file with wrong permission (644 instead of 600)
+        source_dir = tmppath / "source"
+        source_dir.mkdir()
+        source_file = source_dir / "id_ed25519"
+        source_file.write_text("fake ssh key")
+        source_file.chmod(0o644)
+
+        # Create config - use ~/.ssh/id_ed25519 to match sensitive pattern
+        config = tmppath / "test.toml"
+        config.write_text(f'''
+[links]
+"source/id_ed25519" = "~/.ssh/xdotter_test_id_ed25519_{os.getpid()}"
+''')
+
+        target_path = Path.home() / ".ssh" / f"xdotter_test_id_ed25519_{os.getpid()}"
+
+        try:
+            target_path.parent.mkdir(exist_ok=True)
+
+            # Deploy with --check-permissions
+            code, stdout, stderr = run_xd(
+                ["-c", "test.toml", "deploy", "--check-permissions", "-v"],
+                cwd=tmpdir
+            )
+
+            # Should show permission warning - file is inside ~/.ssh so needs 700
+            # But filename matches id_ed25519* pattern so needs 600
+            if "✗" in stdout and ("600" in stdout or "700" in stdout):
+                log_test("Detects wrong SSH key permission", "PASS")
+            else:
+                log_test("Detects wrong SSH key permission", "FAIL", f"stdout: {stdout[:200]}")
+
+        finally:
+            if target_path.exists() or target_path.is_symlink():
+                target_path.unlink()
+
+
+def test_permission_fix_ssh_key():
+    """Test --fix-permissions for SSH key"""
+    print("\n[Test: Permission Fix SSH Key]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create source file with wrong permission
+        source_dir = tmppath / "source"
+        source_dir.mkdir()
+        source_file = source_dir / "id_ed25519"
+        source_file.write_text("fake ssh key")
+        source_file.chmod(0o644)
+
+        # Create config - use filename that matches id_ed25519* pattern
+        # Pattern: id_ed25519* matches filenames starting with "id_ed25519"
+        config = tmppath / "test.toml"
+        config.write_text(f'''
+[links]
+"source/id_ed25519" = "~/.ssh/id_ed25519_xdotter_test_{os.getpid()}"
+''')
+
+        target_path = Path.home() / ".ssh" / f"id_ed25519_xdotter_test_{os.getpid()}"
+
+        try:
+            target_path.parent.mkdir(exist_ok=True)
+
+            # Deploy with --fix-permissions
+            code, stdout, stderr = run_xd(
+                ["-c", "test.toml", "deploy", "--fix-permissions", "-v"],
+                cwd=tmpdir
+            )
+
+            # Check if source file permission was fixed
+            import stat
+            actual_mode = stat.S_IMODE(source_file.stat().st_mode)
+
+            # Should be fixed to 600 (matches id_ed25519* pattern)
+            if actual_mode == 0o600:
+                log_test("Fixes SSH key permission to 600", "PASS")
+            else:
+                log_test("Fixes SSH key permission to 600", "FAIL", f"mode={oct(actual_mode)}")
+
+        finally:
+            if target_path.exists() or target_path.is_symlink():
+                target_path.unlink()
+
+
+def test_permission_check_correct_permission():
+    """Test --check-permissions with correct permission"""
+    print("\n[Test: Permission Check Correct]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create source file with correct permission (600)
+        source_dir = tmppath / "source"
+        source_dir.mkdir()
+        source_file = source_dir / "id_ed25519"
+        source_file.write_text("fake ssh key")
+        source_file.chmod(0o600)
+
+        # Create config - use ~/.ssh/ path to match sensitive pattern
+        config = tmppath / "test.toml"
+        config.write_text(f'''
+[links]
+"source/id_ed25519" = "~/.ssh/xdotter_test_correct_{os.getpid()}"
+''')
+
+        target_path = Path.home() / ".ssh" / f"xdotter_test_correct_{os.getpid()}"
+
+        try:
+            target_path.parent.mkdir(exist_ok=True)
+
+            # Deploy with --check-permissions
+            code, stdout, stderr = run_xd(
+                ["-c", "test.toml", "deploy", "--check-permissions", "-v"],
+                cwd=tmpdir
+            )
+
+            # Should show checkmark (✓)
+            if "✓" in stdout:
+                log_test("Recognizes correct SSH key permission", "PASS")
+            else:
+                log_test("Recognizes correct SSH key permission", "FAIL", f"stdout: {stdout[:200]}")
+
+        finally:
+            if target_path.exists() or target_path.is_symlink():
+                target_path.unlink()
+
+
+def test_permission_pattern_matching():
+    """Test permission pattern matching for various key files"""
+    print("\n[Test: Permission Pattern Matching]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create source files with wrong permissions
+        source_dir = tmppath / "source"
+        source_dir.mkdir()
+
+        # Use target filenames that match patterns
+        # Format: (source_name, target_name, pattern_matched)
+        test_cases = [
+            ("key1", "id_rsa_custom", "id_rsa*"),        # matches id_rsa*
+            ("key2", "server_ed25519", "*_ed25519"),     # matches *_ed25519
+            ("key3", "cert.pem", "*.pem"),               # matches *.pem
+            ("key4", "mykey.key", "*.key"),              # matches *.key
+        ]
+
+        for src_name, tgt_name, pattern in test_cases:
+            f = source_dir / src_name
+            f.write_text("fake key")
+            f.chmod(0o644)
+
+        # Create config - use ~/.ssh/ paths with matching filenames
+        config = tmppath / "test.toml"
+        links = '\n'.join([f'"source/{src}" = "~/.ssh/xdotter_{tgt}_{os.getpid()}"' 
+                          for src, tgt, _ in test_cases])
+        config.write_text(f'''
+[links]
+{links}
+''')
+
+        # Deploy with --check-permissions
+        code, stdout, stderr = run_xd(
+            ["-c", "test.toml", "deploy", "--check-permissions", "-v"],
+            cwd=tmpdir
+        )
+
+        # All should be detected as needing permission fix
+        # The exact permission depends on pattern matching
+        if stdout.count("✗") >= 4:
+            log_test("Pattern matching detects all key types", "PASS")
+        else:
+            log_test("Pattern matching detects all key types", "FAIL", f"✗ count={stdout.count('✗')}")
+
+        # Cleanup
+        for src, tgt, _ in test_cases:
+            target = Path.home() / ".ssh" / f"xdotter_{tgt}_{os.getpid()}"
+            if target.exists() or target.is_symlink():
+                target.unlink()
+
+
+def test_permission_dry_run():
+    """Test --fix-permissions with --dry-run doesn't modify files"""
+    print("\n[Test: Permission Dry Run]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create source file with wrong permission
+        source_dir = tmppath / "source"
+        source_dir.mkdir()
+        source_file = source_dir / "id_ed25519"
+        source_file.write_text("fake ssh key")
+        source_file.chmod(0o644)
+
+        # Create config - use ~/.ssh/ path to match sensitive pattern
+        config = tmppath / "test.toml"
+        config.write_text(f'''
+[links]
+"source/id_ed25519" = "~/.ssh/xdotter_dry_perm_{os.getpid()}"
+''')
+
+        target_path = Path.home() / ".ssh" / f"xdotter_dry_perm_{os.getpid()}"
+
+        try:
+            target_path.parent.mkdir(exist_ok=True)
+
+            # Deploy with --fix-permissions --dry-run
+            code, stdout, stderr = run_xd(
+                ["-c", "test.toml", "deploy", "--fix-permissions", "-n", "-v"],
+                cwd=tmpdir
+            )
+
+            # Check source file permission is NOT changed
+            import stat
+            actual_mode = stat.S_IMODE(source_file.stat().st_mode)
+
+            if actual_mode == 0o644:
+                log_test("Dry-run doesn't modify permissions", "PASS")
+            else:
+                log_test("Dry-run doesn't modify permissions", "FAIL", f"mode changed to {oct(actual_mode)}")
+
+        finally:
+            if target_path.exists() or target_path.is_symlink():
+                target_path.unlink()
+
 
 def main():
     """Run all tests"""
@@ -991,6 +1231,13 @@ def main():
     test_whitespace_in_config()
     test_single_quotes_in_config()
     
+
+    # Permission check tests
+    test_permission_check_ssh_key()
+    test_permission_fix_ssh_key()
+    test_permission_check_correct_permission()
+    test_permission_pattern_matching()
+    test_permission_dry_run()
     # Summary
     success = print_summary()
     

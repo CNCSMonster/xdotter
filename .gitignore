@@ -21,6 +21,10 @@ wheels/
 *.egg
 *.pyc
 
+# Build artifacts
+*.pyz
+xd.pyz
+
 # Test artifacts
 xdotter.toml
 test_xdotter.toml
