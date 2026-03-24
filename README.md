@@ -17,8 +17,12 @@ A **zero-dependency**, **single-file** dotfile manager written in Python. No bui
 ## Quick Start
 
 ```bash
-# Download
-curl -L https://github.com/cncsmonster/xdotter/releases/latest/download/xd.pyz -o ~/.local/bin/xd
+# Download (auto-detects authenticated gh, falls back to curl)
+if command -v gh &> /dev/null && gh auth status &> /dev/null 2>&1; then
+    gh release download --repo cncsmonster/xdotter --pattern xd.pyz --output ~/.local/bin/xd
+else
+    curl -L https://github.com/cncsmonster/xdotter/releases/latest/download/xd.pyz -o ~/.local/bin/xd
+fi
 
 # Make executable
 chmod +x ~/.local/bin/xd
@@ -26,6 +30,8 @@ chmod +x ~/.local/bin/xd
 # Run
 xd --help
 ```
+
+**Note:** Using `gh` avoids GitHub rate limits (5000/hour vs 60/hour for unauthenticated requests).
 
 ## Development
 
