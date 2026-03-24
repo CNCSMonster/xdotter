@@ -7,20 +7,20 @@ A **zero-dependency**, **single-file** dotfile manager written in Python. No bui
 ## Features
 
 - ✅ **Zero dependencies** - Uses Python standard library + vendored tomli
-- ✅ **Single file** - Easy to distribute and understand (79KB .pyz)
+- ✅ **Single file** - Easy to distribute and understand (~55KB .pyz)
 - ✅ **Cross-platform** - Works on Linux, macOS, and Windows (with Python)
 - ✅ **No installation required** - Run directly or install with one command
 - ✅ **Fast & Simple** - Minimal overhead, easy to configure
 - ✅ **Robust TOML parsing** - Full TOML v1.0 compliance via embedded tomli
+- ✅ **Permission checking** - Auto-detect and fix permissions for sensitive files
 
 ## Quick Start
 
-### Option 1: Download Single File (Recommended)
+### Option 1: Install with Script (Recommended)
 
 ```bash
-# Download the single-file executable (79KB .pyz)
-curl -sSL https://raw.githubusercontent.com/cncsmonster/xdotter/main/xd.pyz -o ~/.local/bin/xd
-chmod +x ~/.local/bin/xd
+# One-line installation
+curl -sSL https://raw.githubusercontent.com/cncsmonster/xdotter/main/install.sh | bash
 
 # Add to PATH (if not already)
 export PATH="$HOME/.local/bin:$PATH"
@@ -37,19 +37,7 @@ curl -L https://github.com/cncsmonster/xdotter/releases/latest/download/xd.pyz -
 chmod +x ~/.local/bin/xd
 ```
 
-### Option 3: Download & Run Directly (Source)
-
-```bash
-# Download the Python script (requires _vendor/ directory)
-curl -sSL https://raw.githubusercontent.com/cncsmonster/xdotter/main/xd.py -o xd.py
-
-# Also need vendored dependencies
-git clone https://github.com/cncsmonster/xdotter.git
-cd xdotter
-python3 xd.py --help
-```
-
-### Option 4: Clone Repository (Development)
+### Option 3: Clone Repository (Development)
 
 ```bash
 git clone https://github.com/cncsmonster/xdotter.git
