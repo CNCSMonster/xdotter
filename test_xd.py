@@ -967,13 +967,14 @@ def test_permission_check_ssh_key():
         source_file.chmod(0o644)
 
         # Create config - use ~/.ssh/id_ed25519 to match sensitive pattern
+        # Filename must match pattern "id_ed25519*" for detection
         config = tmppath / "test.toml"
         config.write_text(f'''
 [links]
-"source/id_ed25519" = "~/.ssh/xdotter_test_id_ed25519_{os.getpid()}"
+"source/id_ed25519" = "~/.ssh/id_ed25519_xdotter_test_{os.getpid()}"
 ''')
 
-        target_path = Path.home() / ".ssh" / f"xdotter_test_id_ed25519_{os.getpid()}"
+        target_path = Path.home() / ".ssh" / f"id_ed25519_xdotter_test_{os.getpid()}"
 
         try:
             target_path.parent.mkdir(exist_ok=True)
@@ -984,9 +985,8 @@ def test_permission_check_ssh_key():
                 cwd=tmpdir
             )
 
-            # Should show permission warning - file is inside ~/.ssh so needs 700
-            # But filename matches id_ed25519* pattern so needs 600
-            if "✗" in stdout and ("600" in stdout or "700" in stdout):
+            # Should show permission warning - filename matches id_ed25519* pattern
+            if "✗" in stdout and "600" in stdout:
                 log_test("Detects wrong SSH key permission", "PASS")
             else:
                 log_test("Detects wrong SSH key permission", "FAIL", f"stdout: {stdout[:200]}")
@@ -1058,14 +1058,14 @@ def test_permission_check_correct_permission():
         source_file.write_text("fake ssh key")
         source_file.chmod(0o600)
 
-        # Create config - use ~/.ssh/ path to match sensitive pattern
+        # Create config - use ~/.ssh/ path with filename matching pattern
         config = tmppath / "test.toml"
         config.write_text(f'''
 [links]
-"source/id_ed25519" = "~/.ssh/xdotter_test_correct_{os.getpid()}"
+"source/id_ed25519" = "~/.ssh/id_ed25519_xdotter_correct_{os.getpid()}"
 ''')
 
-        target_path = Path.home() / ".ssh" / f"xdotter_test_correct_{os.getpid()}"
+        target_path = Path.home() / ".ssh" / f"id_ed25519_xdotter_correct_{os.getpid()}"
 
         try:
             target_path.parent.mkdir(exist_ok=True)
@@ -1098,7 +1098,7 @@ def test_permission_pattern_matching():
         source_dir = tmppath / "source"
         source_dir.mkdir()
 
-        # Use target filenames that match patterns
+        # Use target filenames that match patterns directly
         # Format: (source_name, target_name, pattern_matched)
         test_cases = [
             ("key1", "id_rsa_custom", "id_rsa*"),        # matches id_rsa*
@@ -1112,9 +1112,9 @@ def test_permission_pattern_matching():
             f.write_text("fake key")
             f.chmod(0o644)
 
-        # Create config - use ~/.ssh/ paths with matching filenames
+        # Create config - use ~/.ssh/ paths with filenames that match patterns
         config = tmppath / "test.toml"
-        links = '\n'.join([f'"source/{src}" = "~/.ssh/xdotter_{tgt}_{os.getpid()}"' 
+        links = '\n'.join([f'"source/{src}" = "~/.ssh/{tgt}_{os.getpid()}"'
                           for src, tgt, _ in test_cases])
         config.write_text(f'''
 [links]
@@ -1136,7 +1136,7 @@ def test_permission_pattern_matching():
 
         # Cleanup
         for src, tgt, _ in test_cases:
-            target = Path.home() / ".ssh" / f"xdotter_{tgt}_{os.getpid()}"
+            target = Path.home() / ".ssh" / f"{tgt}_{os.getpid()}"
             if target.exists() or target.is_symlink():
                 target.unlink()
 
