@@ -1099,12 +1099,13 @@ def test_permission_pattern_matching():
         source_dir.mkdir()
 
         # Use target filenames that match patterns directly
+        # Use unique prefixes that still match the patterns
         # Format: (source_name, target_name, pattern_matched)
         test_cases = [
-            ("key1", "id_rsa_custom", "id_rsa*"),        # matches id_rsa*
-            ("key2", "server_ed25519", "*_ed25519"),     # matches *_ed25519
-            ("key3", "cert.pem", "*.pem"),               # matches *.pem
-            ("key4", "mykey.key", "*.key"),              # matches *.key
+            ("key1", f"id_rsa_custom_{os.getpid()}", "id_rsa*"),        # matches id_rsa*
+            ("key2", f"server_ed25519_{os.getpid()}", "*_ed25519"),     # matches *_ed25519
+            ("key3", f"cert_{os.getpid()}.pem", "*.pem"),               # matches *.pem
+            ("key4", f"mykey_{os.getpid()}.key", "*.key"),              # matches *.key
         ]
 
         for src_name, tgt_name, pattern in test_cases:
@@ -1114,7 +1115,7 @@ def test_permission_pattern_matching():
 
         # Create config - use ~/.ssh/ paths with filenames that match patterns
         config = tmppath / "test.toml"
-        links = '\n'.join([f'"source/{src}" = "~/.ssh/{tgt}_{os.getpid()}"'
+        links = '\n'.join([f'"source/{src}" = "~/.ssh/{tgt}"'
                           for src, tgt, _ in test_cases])
         config.write_text(f'''
 [links]
@@ -1136,7 +1137,7 @@ def test_permission_pattern_matching():
 
         # Cleanup
         for src, tgt, _ in test_cases:
-            target = Path.home() / ".ssh" / f"{tgt}_{os.getpid()}"
+            target = Path.home() / ".ssh" / tgt
             if target.exists() or target.is_symlink():
                 target.unlink()
 
