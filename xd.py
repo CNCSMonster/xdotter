@@ -206,14 +206,24 @@ def get_required_permission(path: Path) -> Optional[Tuple[int, str]]:
             return (mode, desc)
 
     # 3. Check for parent directory matches (for files inside sensitive dirs)
+    # Use try/except for is_relative_to (Python 3.9+) compatibility
     for sensitive_path, (mode, desc) in SENSITIVE_PATHS.items():
         sensitive_dir = Path(sensitive_path).expanduser()
         try:
-            if expanded_path.is_relative_to(sensitive_dir):
-                # File is inside a sensitive directory
-                # Use the directory's permission requirement
-                return (mode, f"inside {desc}")
-        except (OSError, RuntimeError):
+            # Python 3.9+ method
+            if hasattr(expanded_path, 'is_relative_to'):
+                if expanded_path.is_relative_to(sensitive_dir):
+                    return (mode, f"inside {desc}")
+            else:
+                # Python 3.8 fallback: use resolve() and check prefix
+                expanded_resolved = expanded_path.resolve()
+                sensitive_resolved = sensitive_dir.resolve()
+                try:
+                    expanded_resolved.relative_to(sensitive_resolved)
+                    return (mode, f"inside {desc}")
+                except ValueError:
+                    pass
+        except (OSError, RuntimeError, ValueError):
             continue
 
     return None
