@@ -16,28 +16,18 @@ A **zero-dependency**, **single-file** dotfile manager written in Python. No bui
 
 ## Quick Start
 
-### Option 1: Install with Script (Recommended)
-
 ```bash
-# One-line installation
-curl -sSL https://raw.githubusercontent.com/cncsmonster/xdotter/main/install.sh | bash
+# Download
+curl -L https://github.com/cncsmonster/xdotter/releases/latest/download/xd.pyz -o ~/.local/bin/xd
 
-# Add to PATH (if not already)
-export PATH="$HOME/.local/bin:$PATH"
+# Make executable
+chmod +x ~/.local/bin/xd
 
-# Use it
+# Run
 xd --help
 ```
 
-### Option 2: Download from Releases
-
-```bash
-# Download from GitHub Releases
-curl -L https://github.com/cncsmonster/xdotter/releases/latest/download/xd.pyz -o ~/.local/bin/xd
-chmod +x ~/.local/bin/xd
-```
-
-### Option 3: Clone Repository (Development)
+## Development
 
 ```bash
 git clone https://github.com/cncsmonster/xdotter.git
@@ -241,20 +231,10 @@ Test with isolated environment using bubblewrap:
 
 This runs a complete deployment test of `cncsmonster/dotfiles` in an isolated sandbox.
 
-## Building the single-file (xd.pyz)
-
-From the repo root (with `xd.py` and `_vendor/tomli/` present):
+## Building
 
 ```bash
-python3 -c "
-import zipapp, tempfile, shutil
-from pathlib import Path
-with tempfile.TemporaryDirectory() as tmpdir:
-    p = Path(tmpdir)
-    shutil.copy('xd.py', p / 'xd.py')
-    shutil.copytree('_vendor', p / '_vendor')
-    zipapp.create_archive(p, 'xd.pyz', '/usr/bin/env python3', 'xd:main')
-"
+./scripts/build-pyz.sh
 ```
 
 ## License

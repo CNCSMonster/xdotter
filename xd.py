@@ -39,12 +39,7 @@ import argparse
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-# Add vendor directory for tomli
-_vendor_path = Path(__file__).parent / '_vendor'
-if str(_vendor_path) not in sys.path:
-    sys.path.insert(0, str(_vendor_path))
-
-from tomli import loads
+from _vendor.tomli import loads
 
 
 def get_version() -> str:
@@ -625,13 +620,14 @@ EXAMPLES:
     python xd.py -c myconfig.toml     Use custom config file
 
 INSTALLATION:
-    # Quick install (downloads to ~/.local/bin/xd)
-    curl -sSL https://raw.githubusercontent.com/cncsmonster/xdotter/main/install.sh | bash
+    # Download
+    curl -L https://github.com/cncsmonster/xdotter/releases/latest/download/xd.pyz -o ~/.local/bin/xd
 
-    # Or download and run directly
-    curl -sSL https://raw.githubusercontent.com/cncsmonster/xdotter/main/xd.py -o xd.py
-    chmod +x xd.py
-    ./xd.py --help
+    # Make executable
+    chmod +x ~/.local/bin/xd
+
+    # Run
+    xd --help
 
 LICENSE:
     MIT License - See LICENSE file for details
