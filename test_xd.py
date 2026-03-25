@@ -1103,7 +1103,7 @@ def test_permission_pattern_matching():
         # Format: (source_name, target_name, pattern_matched)
         test_cases = [
             ("key1", f"id_rsa_custom_{os.getpid()}", "id_rsa*"),        # matches id_rsa*
-            ("key2", f"ed25519_server_{os.getpid()}", "*_ed25519"),     # matches *_ed25519
+            ("key2", f"server_ed25519", "*_ed25519"),                   # matches *_ed25519
             ("key3", f"cert_{os.getpid()}.pem", "*.pem"),               # matches *.pem
             ("key4", f"mykey_{os.getpid()}.key", "*.key"),              # matches *.key
         ]
