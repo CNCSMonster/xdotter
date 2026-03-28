@@ -284,44 +284,33 @@ This runs a complete deployment test of `cncsmonster/dotfiles` in an isolated sa
 
 ## Shell Completion
 
-xdotter uses [argcomplete](https://github.com/kislyuk/argcomplete) for automatic shell completion generation from argparse definitions.
+xdotter uses the vendored [argcomplete](https://github.com/kislyuk/argcomplete) library to automatically generate shell completion scripts from the argparse definition.
 
-### Bash
+### Quick Setup (Recommended)
 
-```bash
-# One-time setup
-eval "$(register-python-argcomplete xd)"
-
-# Or add to ~/.bashrc for permanent:
-echo 'eval "$(register-python-argcomplete xd)"' >> ~/.bashrc
-
-# If xd is installed via .pyz, use:
-eval "$(register-python-argcomplete --external-argcomplete-script ~/.local/bin/xd xd)"
-```
-
-### Zsh
+One-line setup that works immediately:
 
 ```bash
-# One-time setup
-eval "$(register-python-argcomplete --shell zsh xd)"
+# Bash - add to ~/.bashrc
+eval "$(xd completion bash)"
 
-# Or add to ~/.zshrc for permanent:
-echo 'eval "$(register-python-argcomplete --shell zsh xd)"' >> ~/.zshrc
+# Zsh - add to ~/.zshrc  
+eval "$(xd completion zsh)"
+
+# Fish - add to config.fish
+xd completion fish | source
 ```
 
-### Fish
+**Important:** Make sure `xd` is in your `PATH`. If you installed via `build-pyz.sh --install`, add this to your `~/.bashrc` **before** the completion line:
 
 ```bash
-# One-time setup
-register-python-argcomplete --shell fish xd | source
-
-# Or add to config.fish for permanent:
-register-python-argcomplete --shell fish xd >> ~/.config/fish/completions/xd.fish
+export PATH="$HOME/.local/bin:$PATH"
+eval "$(xd completion bash)"
 ```
 
-### Alternative: Static Completion Scripts
+### Alternative: Install Completion Files
 
-If you prefer static completion scripts (no argcomplete dependency):
+If you prefer to install completion files:
 
 ```bash
 # Bash
@@ -333,6 +322,24 @@ xd completion zsh > ~/.local/share/zsh/site-functions/_xd
 # Fish
 xd completion fish > ~/.config/fish/completions/xd.fish
 ```
+
+### Troubleshooting
+
+If completion doesn't work:
+
+1. **Check xd is in PATH**: `which xd` should return a path
+2. **Reload your shell**: Run `source ~/.bashrc` (or `~/.zshrc`)
+3. **Test manually**: Run `xd completion bash` to see the generated script
+4. **Zsh specific**: Make sure `compinit` is loaded (the script does this automatically)
+
+### How It Works
+
+The `xd completion <shell>` command generates a shell script that:
+1. Defines a completion function that calls `xd` with special environment variables
+2. Registers the function with your shell's completion system
+3. When you press TAB, the shell calls `xd` which uses argcomplete to generate completions dynamically
+
+This ensures completions always stay in sync with the CLI definition - no manual maintenance needed.
 
 ## License
 

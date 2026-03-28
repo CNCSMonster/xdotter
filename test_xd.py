@@ -1188,34 +1188,356 @@ def test_permission_dry_run():
                 target_path.unlink()
 
 
+# ============================================================
+# Validate Command Tests
+# ============================================================
+
+def test_validate_command_valid_toml():
+    """Test validate command with valid TOML file"""
+    print("\n[Test: Validate Valid TOML]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create valid TOML config
+        config = tmppath / "xdotter.toml"
+        config.write_text('''
+[links]
+".zshrc" = "~/.zshrc"
+
+[dependencies]
+"nvim" = "config/nvim"
+''')
+
+        code, stdout, stderr = run_xd(["validate", str(config)])
+
+        if code == 0 and "Valid" in stdout:
+            log_test("Validate accepts valid TOML", "PASS")
+        else:
+            log_test("Validate accepts valid TOML", "FAIL", f"code={code}, stdout={stdout[:100]}")
+
+
+def test_validate_command_invalid_toml():
+    """Test validate command with invalid TOML file"""
+    print("\n[Test: Validate Invalid TOML]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create invalid TOML config (unclosed string)
+        config = tmppath / "invalid.toml"
+        config.write_text('''
+[links]
+".zshrc" = "~/.zshrc
+''')
+
+        code, stdout, stderr = run_xd(["validate", str(config)])
+
+        # Should fail with error message
+        if code != 0 or "错误" in stdout or "error" in stdout.lower() or "✗" in stdout:
+            log_test("Validate rejects invalid TOML", "PASS")
+        else:
+            log_test("Validate rejects invalid TOML", "FAIL", f"code={code}")
+
+
+def test_validate_command_valid_json():
+    """Test validate command with valid JSON file"""
+    print("\n[Test: Validate Valid JSON]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create valid JSON config
+        config = tmppath / "xdotter.json"
+        config.write_text('''
+{
+    "links": {
+        ".zshrc": "~/.zshrc"
+    }
+}
+''')
+
+        code, stdout, stderr = run_xd(["validate", str(config)])
+
+        if code == 0 and "Valid" in stdout:
+            log_test("Validate accepts valid JSON", "PASS")
+        else:
+            log_test("Validate accepts valid JSON", "FAIL", f"code={code}, stdout={stdout[:100]}")
+
+
+def test_validate_command_invalid_json():
+    """Test validate command with invalid JSON file"""
+    print("\n[Test: Validate Invalid JSON]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create invalid JSON config (missing comma)
+        config = tmppath / "invalid.json"
+        config.write_text('''
+{
+    "links": {
+        ".zshrc": "~/.zshrc"
+        ".bashrc": "~/.bashrc"
+    }
+}
+''')
+
+        code, stdout, stderr = run_xd(["validate", str(config)])
+
+        # Should fail with error message
+        if code != 0 or "错误" in stdout or "error" in stdout.lower() or "✗" in stdout or "Expecting" in stdout:
+            log_test("Validate rejects invalid JSON", "PASS")
+        else:
+            log_test("Validate rejects invalid JSON", "FAIL", f"code={code}")
+
+
+def test_validate_command_nonexistent_file():
+    """Test validate command with nonexistent file"""
+    print("\n[Test: Validate Nonexistent File]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        nonexistent = tmppath / "nonexistent.toml"
+        code, stdout, stderr = run_xd(["validate", str(nonexistent)])
+
+        # Should report file not found
+        if code != 0 or "not found" in stdout.lower() or "not found" in stderr.lower():
+            log_test("Validate handles nonexistent file", "PASS")
+        else:
+            log_test("Validate handles nonexistent file", "FAIL", f"code={code}")
+
+
+def test_validate_command_multiple_files():
+    """Test validate command with multiple files"""
+    print("\n[Test: Validate Multiple Files]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create valid and invalid files
+        valid_config = tmppath / "valid.toml"
+        valid_config.write_text('[links]\n".zshrc" = "~/.zshrc"')
+
+        invalid_config = tmppath / "invalid.toml"
+        invalid_config.write_text('[links\n".zshrc" = "~/.zshrc"')
+
+        code, stdout, stderr = run_xd([
+            "validate",
+            str(valid_config),
+            str(invalid_config)
+        ])
+
+        # Should report both files - valid.toml in stdout, invalid.toml in stderr
+        if "valid.toml" in stdout and "invalid.toml" in stderr:
+            log_test("Validate handles multiple files", "PASS")
+        else:
+            log_test("Validate handles multiple files", "FAIL", f"stdout={stdout[:200]}, stderr={stderr[:200]}")
+
+
+def test_validate_command_default_files():
+    """Test validate command checks default files in current dir"""
+    print("\n[Test: Validate Default Files]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create valid xdotter.toml in current dir
+        config = tmppath / "xdotter.toml"
+        config.write_text('[links]\n".zshrc" = "~/.zshrc"')
+
+        code, stdout, stderr = run_xd(["validate"], cwd=tmpdir)
+
+        if code == 0 and "xdotter.toml" in stdout:
+            log_test("Validate checks default xdotter.toml", "PASS")
+        else:
+            log_test("Validate checks default xdotter.toml", "FAIL", f"code={code}")
+
+
+# ============================================================
+# Completion Command Tests
+# ============================================================
+
+def test_completion_command_bash():
+    """Test completion command generates Bash script"""
+    print("\n[Test: Completion Bash]")
+
+    code, stdout, stderr = run_xd(["completion", "bash"])
+
+    # Simplified bash completion with _xd_completion function
+    if code == 0 and "_xd_completion" in stdout and "complete -F" in stdout:
+        log_test("Completion generates Bash script", "PASS")
+    else:
+        log_test("Completion generates Bash script", "FAIL", f"code={code}")
+
+
+def test_completion_command_zsh():
+    """Test completion command generates Zsh script"""
+    print("\n[Test: Completion Zsh]")
+
+    code, stdout, stderr = run_xd(["completion", "zsh"])
+
+    # Simplified zsh completion with compdef
+    if code == 0 and "_xd_completion" in stdout and "compdef" in stdout:
+        log_test("Completion generates Zsh script", "PASS")
+    else:
+        log_test("Completion generates Zsh script", "FAIL", f"code={code}")
+
+
+def test_completion_command_fish():
+    """Test completion command generates Fish script"""
+    print("\n[Test: Completion Fish]")
+
+    code, stdout, stderr = run_xd(["completion", "fish"])
+
+    # argcomplete generates fish completion with __fish_*_complete
+    if code == 0 and "__fish_" in stdout and "complete " in stdout:
+        log_test("Completion generates Fish script", "PASS")
+    else:
+        log_test("Completion generates Fish script", "FAIL", f"code={code}")
+
+
+def test_completion_command_no_shell():
+    """Test completion command without shell argument"""
+    print("\n[Test: Completion No Shell]")
+
+    code, stdout, stderr = run_xd(["completion"])
+
+    # Should show error and usage
+    if code != 0 and ("usage" in stdout.lower() or "error" in stdout.lower() or "bash|zsh|fish" in stdout):
+        log_test("Completion requires shell argument", "PASS")
+    else:
+        log_test("Completion requires shell argument", "FAIL", f"code={code}")
+
+
+def test_completion_command_invalid_shell():
+    """Test completion command with invalid shell"""
+    print("\n[Test: Completion Invalid Shell]")
+
+    code, stdout, stderr = run_xd(["completion", "powershell"])
+
+    # Should show error for unsupported shell
+    if code != 0 and ("unsupported" in stdout.lower() or "error" in stdout.lower() or "bash, zsh, fish" in stdout):
+        log_test("Completion rejects invalid shell", "PASS")
+    else:
+        log_test("Completion rejects invalid shell", "FAIL", f"code={code}")
+
+
+# ============================================================
+# Auto-Validation Tests
+# ============================================================
+
+def test_deploy_auto_validation_invalid():
+    """Test deploy automatically validates config and fails on invalid syntax"""
+    print("\n[Test: Deploy Auto-Validation Invalid]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create invalid TOML config
+        config = tmppath / "xdotter.toml"
+        config.write_text('''
+[links
+".zshrc" = "~/.zshrc"
+''')
+
+        code, stdout, stderr = run_xd(["deploy", "-v"], cwd=tmpdir)
+
+        # Should fail due to validation (error messages in stderr)
+        if code != 0 and ("aborted" in stderr.lower() or "错误" in stderr or "error" in stderr.lower()):
+            log_test("Deploy auto-validation catches invalid syntax", "PASS")
+        else:
+            log_test("Deploy auto-validation catches invalid syntax", "FAIL", f"code={code}, stderr={stderr[:200]}")
+
+
+def test_deploy_no_validate_flag():
+    """Test deploy with --no-validate flag skips validation"""
+    print("\n[Test: Deploy No Validate Flag]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create invalid TOML but with --no-validate it should proceed
+        config = tmppath / "xdotter.toml"
+        config.write_text('''
+[links
+".zshrc" = "~/.zshrc"
+''')
+
+        code, stdout, stderr = run_xd(["deploy", "--no-validate"], cwd=tmpdir)
+
+        # Should not fail due to validation (may fail later for other reasons)
+        # The key is that validation error should not be shown
+        if "aborted" not in stdout.lower() and "验证" not in stdout:
+            log_test("Deploy --no-validate skips validation", "PASS")
+        else:
+            log_test("Deploy --no-validate skips validation", "FAIL", f"stdout={stdout[:200]}")
+
+
+def test_deploy_auto_validation_valid():
+    """Test deploy succeeds with valid config after auto-validation"""
+    print("\n[Test: Deploy Auto-Validation Valid]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create valid config
+        source_dir = tmppath / "source"
+        source_dir.mkdir()
+        source_file = source_dir / "test.txt"
+        source_file.write_text("test")
+
+        config = tmppath / "xdotter.toml"
+        config.write_text(f'''
+[links]
+"source/test.txt" = "~/.cache/xdotter_autoval_{os.getpid()}.txt"
+''')
+
+        target_path = Path.home() / f".cache/xdotter_autoval_{os.getpid()}.txt"
+
+        try:
+            target_path.parent.mkdir(exist_ok=True)
+
+            code, stdout, stderr = run_xd(["deploy"], cwd=tmpdir)
+
+            if code == 0 and target_path.is_symlink():
+                log_test("Deploy succeeds after valid auto-validation", "PASS")
+            else:
+                log_test("Deploy succeeds after valid auto-validation", "FAIL", f"code={code}")
+        finally:
+            if target_path.exists():
+                target_path.unlink()
+
+
 def main():
     """Run all tests"""
     print("=" * 50)
     print("xdotter Test Suite")
     print("=" * 50)
-    
+
     # Basic command tests
     test_help_command()
     test_version_command()
     test_new_command()
-    
+
     # Config parsing test
     test_config_parsing()
-    
+
     # Deploy tests
     test_deploy_basic_link()
     test_deploy_dry_run()
     test_deploy_with_tilde()
     test_multiple_links()
-    
+
     # Undeploy test
     test_undeploy()
-    
+
     # Flag tests
     test_quiet_mode()
     test_verbose_mode()
     test_force_flag()
-    
+
     # Additional test scenarios
     test_dependencies_subdirectory()
     test_interactive_mode_confirm()
@@ -1231,7 +1553,6 @@ def main():
     test_comments_in_config()
     test_whitespace_in_config()
     test_single_quotes_in_config()
-    
 
     # Permission check tests
     test_permission_check_ssh_key()
@@ -1239,9 +1560,31 @@ def main():
     test_permission_check_correct_permission()
     test_permission_pattern_matching()
     test_permission_dry_run()
+
+    # Validate command tests
+    test_validate_command_valid_toml()
+    test_validate_command_invalid_toml()
+    test_validate_command_valid_json()
+    test_validate_command_invalid_json()
+    test_validate_command_nonexistent_file()
+    test_validate_command_multiple_files()
+    test_validate_command_default_files()
+
+    # Completion command tests
+    test_completion_command_bash()
+    test_completion_command_zsh()
+    test_completion_command_fish()
+    test_completion_command_no_shell()
+    test_completion_command_invalid_shell()
+
+    # Auto-validation tests
+    test_deploy_auto_validation_invalid()
+    test_deploy_no_validate_flag()
+    test_deploy_auto_validation_valid()
+
     # Summary
     success = print_summary()
-    
+
     return 0 if success else 1
 
 if __name__ == "__main__":

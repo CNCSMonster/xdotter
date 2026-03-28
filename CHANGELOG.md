@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Automatic shell completion via argcomplete** - Shell completion now auto-generated from argparse
   - Vendored argcomplete 3.6.3 (~42KB, no runtime dependencies)
   - Completion automatically stays in sync with CLI definition
-  - Use `eval "$(register-python-argcomplete xd)"` to activate
+  - Use `xd completion <bash|zsh|fish>` to generate completion scripts
   - Supports Bash, Zsh, and Fish out of the box
+  - No external tools required (e.g., `register-python-argcomplete`)
   - No manual maintenance of completion scripts required
 
 - **Shell completion support** - Generate completion scripts for Bash, Zsh, and Fish
@@ -20,7 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `xd completion zsh` - Generate Zsh completion script
   - `xd completion fish` - Generate Fish completion script
   - Installation instructions in README.md
-  - Static scripts still available as fallback option
 
 - **New `validate` command** - Check configuration file syntax before deployment
   - `xd validate` - Validate xdotter.toml or xdotter.json
