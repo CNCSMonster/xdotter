@@ -49,3 +49,7 @@ jobs:
             chmod +x ~/.local/bin/xd
             xd --help
             ```
+
+            ## Changelog
+
+            See [CHANGELOG.md](https://github.com/cncsmonster/xdotter/blob/main/CHANGELOG.md) for details.

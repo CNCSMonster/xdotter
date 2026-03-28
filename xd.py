@@ -7,14 +7,15 @@ Usage:
     python xd.py [COMMAND] [OPTIONS]
 
 Commands:
-    deploy      Deploy dotfiles (default)
-    undeploy    Remove deployed dotfiles
-    new         Create a new xdotter.toml template
-    help        Print this help message
-    version     Print version
+    deploy              Deploy dotfiles (default)
+    undeploy            Remove deployed dotfiles
+    check-permissions   Check/fix permissions for deployed files
+    validate            Validate configuration file syntax
+    new                 Create a new xdotter.toml template
+    help                Print this help message
+    version             Print version
 
 Options:
-    -c, --config <FILE>     Specify configuration file [default: xdotter.toml]
     -v, --verbose           Show more information
     -q, --quiet             Do not print any output
     -n, --dry-run           Show what would be done without making changes
@@ -22,6 +23,7 @@ Options:
     -f, --force             Force overwrite existing files
     --check-permissions     Check permissions for sensitive files
     --fix-permissions       Fix permissions for sensitive files (implies --check-permissions)
+    --no-validate           Skip config syntax validation during deploy
 
 Requires: Python 3.8+
 """
@@ -29,6 +31,7 @@ Requires: Python 3.8+
 import os
 import sys
 import stat
+import json
 
 # Python version check
 if sys.version_info < (3, 8):
@@ -39,7 +42,7 @@ import argparse
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from _vendor.tomli import loads
+from _vendor.tomli import loads, TOMLDecodeError
 
 
 # ANSI color codes for output
@@ -48,6 +51,214 @@ COLOR_YELLOW = "\033[1;33m"  # Bold yellow
 COLOR_RED = "\033[0;31m"     # Red
 COLOR_GREEN = "\033[0;32m"   # Green
 COLOR_RESET = "\033[0m"      # Reset to default
+
+
+# Common error suggestions for TOML
+TOML_SUGGESTIONS = {
+    "Invalid initial character": "TOML 键名不能以特殊字符开头，请用引号包裹",
+    "Expected '=' after a key": "TOML 键值对需要使用 = 连接",
+    "Unclosed string": "字符串未闭合，请检查引号是否配对",
+    "Invalid number": "数字格式错误，检查是否有前导零或非法字符",
+    "Invalid value": "无效的值，TOML 支持：字符串、数字、布尔值、日期、数组、表格",
+    "Key appears more than once": "键名重复，TOML 不允许重复键名",
+    "Unquoted string": "字符串必须用引号包裹（双引号或单引号）",
+    "Expected ']' at the end": "表格标题未闭合，缺少 ]",
+    "Invalid control character": "不支持控制字符，使用转义序列（如 \\n, \\t）",
+}
+
+# Common error suggestions for JSON
+JSON_SUGGESTIONS = {
+    "Expecting ',' delimiter": "JSON 对象属性之间需要用逗号分隔",
+    "Expecting property name": "JSON 键名必须是字符串（用双引号包裹）",
+    "Expecting ':' delimiter": "JSON 键值对需要使用冒号分隔",
+    "Expecting value": "JSON 值必须是：字符串、数字、布尔值、null、数组或对象",
+    "Unterminated string": "字符串未闭合，检查引号是否配对",
+    "Invalid control character": "JSON 不支持控制字符，使用转义序列（如 \\n）",
+    "Extra data": "JSON 文件只能包含一个顶层值（对象或数组）",
+    "Invalid \\escape": "无效的转义序列，JSON 支持：\\\" \\\\ \\/ \\b \\f \\n \\r \\t \\uXXXX",
+}
+
+
+def detect_config_format(filepath: Path) -> Optional[str]:
+    """
+    Detect configuration file format based on extension.
+    
+    Args:
+        filepath: Path to the configuration file
+        
+    Returns:
+        'toml', 'json', or None if unknown
+    """
+    suffix = filepath.suffix.lower()
+    if suffix == '.toml':
+        return 'toml'
+    elif suffix == '.json':
+        return 'json'
+    return None
+
+
+def get_toml_suggestion(error: TOMLDecodeError) -> Optional[str]:
+    """Get suggestion for fixing TOML error"""
+    error_msg = str(error).lower()
+    for key, suggestion in TOML_SUGGESTIONS.items():
+        if key.lower() in error_msg:
+            return suggestion
+    return None
+
+
+def get_json_suggestion(error: json.JSONDecodeError) -> Optional[str]:
+    """Get suggestion for fixing JSON error"""
+    error_msg = error.msg.lower()
+    for key, suggestion in JSON_SUGGESTIONS.items():
+        if key.lower() in error_msg:
+            return suggestion
+    return None
+
+
+def format_toml_error(filepath: Path, content: str, error: TOMLDecodeError) -> str:
+    """
+    Format TOML error message with context.
+    
+    Args:
+        filepath: Path to the file
+        content: File content
+        error: TomlDecodeError exception
+        
+    Returns:
+        Formatted error message string
+    """
+    line = getattr(error, 'lineno', 1)
+    col = getattr(error, 'pos', 1)
+    
+    # Calculate column from position if pos is absolute
+    if hasattr(error, 'pos') and error.pos and line > 1:
+        lines = content.splitlines()
+        if line <= len(lines):
+            # Find column by counting characters in the error line
+            try:
+                line_start = sum(len(lines[i]) + 1 for i in range(line - 1))
+                col = error.pos - line_start + 1
+            except (IndexError, TypeError):
+                col = 1
+    
+    lines = content.splitlines()
+    error_line = lines[line - 1] if line <= len(lines) else ""
+    prev_line = lines[line - 2] if line > 1 else ""
+    next_line = lines[line] if line < len(lines) else ""
+    
+    # Build error message
+    msg = [
+        f"{COLOR_RED}❌ TOML 语法错误{COLOR_RESET}",
+        f"",
+        f"文件：{filepath}",
+        f"错误：{error.msg} (第 {line} 行，第 {col} 列)",
+        f"",
+        f"第 {line} 行:",
+    ]
+    
+    if prev_line:
+        msg.append(f"  {line-1} | {prev_line}")
+    msg.append(f"{COLOR_RED}> {line} | {error_line}{COLOR_RESET}")
+    msg.append(f"    | {' ' * (col-1)}^")
+    if next_line:
+        msg.append(f"  {line+1} | {next_line}")
+    
+    # Add suggestion
+    suggestion = get_toml_suggestion(error)
+    if suggestion:
+        msg.append(f"")
+        msg.append(f"{COLOR_YELLOW}提示：{suggestion}{COLOR_RESET}")
+    
+    return "\n".join(msg)
+
+
+def format_json_error(filepath: Path, content: str, error: json.JSONDecodeError) -> str:
+    """
+    Format JSON error message with context.
+    
+    Args:
+        filepath: Path to the file
+        content: File content
+        error: JSONDecodeError exception
+        
+    Returns:
+        Formatted error message string
+    """
+    line = error.lineno
+    col = error.colno
+    
+    lines = content.splitlines()
+    error_line = lines[line - 1] if line <= len(lines) else ""
+    prev_line = lines[line - 2] if line > 1 else ""
+    next_line = lines[line] if line < len(lines) else ""
+    
+    # Build error message
+    msg = [
+        f"{COLOR_RED}❌ JSON 语法错误{COLOR_RESET}",
+        f"",
+        f"文件：{filepath}",
+        f"错误：{error.msg} (第 {line} 行，第 {col} 列)",
+        f"",
+        f"第 {line} 行:",
+    ]
+    
+    if prev_line:
+        msg.append(f"  {line-1} | {prev_line}")
+    msg.append(f"{COLOR_RED}> {line} | {error_line}{COLOR_RESET}")
+    msg.append(f"    | {' ' * (col-1)}^")
+    if next_line:
+        msg.append(f"  {line+1} | {next_line}")
+    
+    # Add suggestion
+    suggestion = get_json_suggestion(error)
+    if suggestion:
+        msg.append(f"")
+        msg.append(f"{COLOR_YELLOW}提示：{suggestion}{COLOR_RESET}")
+    
+    return "\n".join(msg)
+
+
+def validate_config(filepath: Path) -> Tuple[bool, str]:
+    """
+    Validate configuration file syntax.
+    
+    Args:
+        filepath: Path to the configuration file
+        
+    Returns:
+        Tuple of (is_valid, message)
+    """
+    if not filepath.exists():
+        return False, f"File not found: {filepath}"
+    
+    # Detect format
+    fmt = detect_config_format(filepath)
+    if fmt is None:
+        return False, f"Unknown file format: {filepath.suffix}"
+    
+    # Read content
+    try:
+        content = filepath.read_text(encoding='utf-8')
+    except OSError as e:
+        return False, f"Cannot read file: {e}"
+    
+    # Validate based on format
+    if fmt == 'toml':
+        try:
+            loads(content)
+            return True, f"TOML syntax is valid"
+        except TOMLDecodeError as e:
+            msg = format_toml_error(filepath, content, e)
+            return False, msg
+    elif fmt == 'json':
+        try:
+            json.loads(content)
+            return True, f"JSON syntax is valid"
+        except json.JSONDecodeError as e:
+            msg = format_json_error(filepath, content, e)
+            return False, msg
+    
+    return False, f"Unsupported format: {fmt}"
 
 
 def get_version() -> str:
@@ -118,6 +329,22 @@ SENSITIVE_PATHS: Dict[str, Tuple[int, str]] = {
     "~/.gnupg/pubring.gpg": (0o644, "GPG public keyring (legacy)"),
     "~/.gnupg/secring.gpg": (0o600, "GPG secret keyring (legacy)"),
     "~/.gnupg/gpg.conf": (0o600, "GPG config"),
+    # Shell configs (affect environment variables and PATH)
+    "~/.bashrc": (0o644, "Bash config"),
+    "~/.zshrc": (0o644, "Zsh config"),
+    "~/.bash_profile": (0o644, "Bash login profile"),
+    "~/.profile": (0o644, "Shell profile"),
+    "~/.zprofile": (0o644, "Zsh login profile"),
+    "~/.zshenv": (0o644, "Zsh environment"),
+    "~/.zlogin": (0o644, "Zsh login script"),
+    "~/.bash_logout": (0o644, "Bash logout script"),
+    # X11 / GUI related (affect graphical session and app launching)
+    "~/.xinitrc": (0o755, "X11 initialization script"),
+    "~/.xsession": (0o755, "X session script"),
+    "~/.xprofile": (0o644, "X profile"),
+    "~/.Xauthority": (0o600, "X11 authority file"),
+    "~/.Xresources": (0o644, "X resources"),
+    "~/.Xdefaults": (0o644, "X defaults"),
     # Other sensitive files
     "~/.netrc": (0o600, "Netrc password file"),
     "~/.pgpass": (0o600, "PostgreSQL password file"),
@@ -144,6 +371,10 @@ SENSITIVE_PATTERNS: List[Tuple[str, int, str]] = [
     # GPG private keys
     ("*.gpg", 0o600, "GPG file"),
     ("*.asc", 0o600, "ASCII armored key"),
+    # Shell config backups (may contain sensitive data)
+    ("*.bashrc", 0o644, "Bash config backup"),
+    ("*.zshrc", 0o644, "Zsh config backup"),
+    ("*.profile", 0o644, "Shell profile backup"),
 ]
 
 
@@ -300,18 +531,21 @@ def fix_permission(path: Path, required_mode: int, args) -> Tuple[bool, str]:
         return False, f"Failed to fix permission for {path}: {e}"
 
 
-def check_permissions_for_link(link: str, args) -> List[str]:
+def check_permissions_for_link(actual_path: Path, link: str, args) -> Tuple[bool, List[str]]:
     """
-    Check permissions for a link target if it's a sensitive path.
+    Check permissions for the source file if the link target is a sensitive path.
 
     Args:
+        actual_path: The source file path (the actual file, not symlink)
         link: The link path (where symlink will be placed)
         args: Command line arguments
 
     Returns:
-        List of warning/error messages
+        Tuple of (can_deploy, messages)
+        can_deploy is False if permission issue found and not forced
     """
     messages = []
+    can_deploy = True
 
     home_dir = get_home_dir()
     link_path = Path(link.replace("~", str(home_dir))).expanduser()
@@ -322,21 +556,27 @@ def check_permissions_for_link(link: str, args) -> List[str]:
     if perm_info:
         required_mode, description = perm_info
 
-        # Check the source file's permission
-        is_correct, msg = check_permission(link_path, required_mode, description, args)
+        # Check the SOURCE file's permission (not the target, which doesn't exist yet)
+        is_correct, msg = check_permission(actual_path, required_mode, description, args)
         # Print permission check result directly
         if is_correct:
             log(args, "info", msg)
         else:
             log(args, "warning", msg)
+            # Permission issue found
+            if not args.force:
+                can_deploy = False
+                log(args, "error", f"Skipping {link}: permission issue for {description}")
         messages.append(msg)
 
         # If not correct and fix is requested
         if not is_correct and getattr(args, 'fix_permissions', False):
-            success, fix_msg = fix_permission(link_path, required_mode, args)
+            success, fix_msg = fix_permission(actual_path, required_mode, args)
             messages.append(fix_msg)
+            if success:
+                can_deploy = True  # Can deploy after fixing
 
-    return messages
+    return can_deploy, messages
 
 
 def log(args, level: str, msg: str):
@@ -366,6 +606,13 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
         home_dir = get_home_dir()
         link_path = Path(link.replace("~", str(home_dir))).expanduser()
 
+        # Check permissions BEFORE creating symlink (if enabled)
+        # This prevents deploying files with wrong permissions to sensitive locations
+        if getattr(args, 'check_permissions', False) or getattr(args, 'fix_permissions', False):
+            can_deploy, _ = check_permissions_for_link(actual, link, args)
+            if not can_deploy:
+                return False, f"Permission issue detected, use --force to override"
+
         # Create parent directory if needed
         link_dir = link_path.parent
         if not link_dir.exists():
@@ -387,7 +634,7 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
             # Warn if target exists but is not a symlink to this location
             if not link_path.is_symlink():
                 log(args, "warning", f"Target exists but is not a symlink: {link_path}")
-            
+
             if args.interactive:
                 print(f"Link {link_path} exists, remove it? [y/n] ", end="")
                 sys.stdout.flush()
@@ -466,6 +713,17 @@ def delete_symlink(link: str, args) -> Tuple[bool, Optional[str]]:
 def deploy_on(config_file: str, args) -> bool:
     """Deploy dotfiles from a config file"""
     log(args, "debug", f"Deploying from {config_file}")
+    
+    # Validate config syntax before deploying (unless skipped)
+    if not getattr(args, 'no_validate', False):
+        config_path = Path(config_file)
+        if config_path.exists():
+            is_valid, msg = validate_config(config_path)
+            if not is_valid:
+                log(args, "error", msg)
+                log(args, "error", "Deployment aborted due to config syntax errors")
+                log(args, "info", "Hint: Run 'xd validate' to check config syntax")
+                return False
 
     try:
         with open(config_file, "r", encoding="utf-8") as f:
@@ -496,10 +754,6 @@ def deploy_on(config_file: str, args) -> bool:
         if not ok:
             log(args, "error", f"failed to create link: {error}")
             success = False
-
-        # Check permissions for sensitive paths
-        if getattr(args, 'check_permissions', False) or getattr(args, 'fix_permissions', False):
-            check_permissions_for_link(link, args)
 
     # Process dependencies
     for dep_name, dep_path in config.get("dependencies", {}).items():
@@ -582,6 +836,152 @@ def undeploy_on(config_file: str, args) -> bool:
     return success
 
 
+def cmd_validate(args) -> bool:
+    """
+    Validate configuration file syntax.
+    
+    Args:
+        args: Command line arguments
+        
+    Returns:
+        True if all configs are valid, False otherwise
+    """
+    # Files to check
+    if hasattr(args, 'files') and args.files:
+        files_to_check = [Path(f) for f in args.files]
+    else:
+        # Default: check xdotter.toml and xdotter.json
+        files_to_check = [Path("xdotter.toml"), Path("xdotter.json")]
+    
+    all_valid = True
+    results = []
+    
+    for filepath in files_to_check:
+        if not filepath.exists():
+            # Skip default files that don't exist
+            if filepath.name in ['xdotter.toml', 'xdotter.json']:
+                continue
+            
+            log(args, "error", f"File not found: {filepath}")
+            all_valid = False
+            continue
+        
+        # Validate
+        is_valid, msg = validate_config(filepath)
+        
+        if is_valid:
+            fmt = detect_config_format(filepath).upper()
+            log(args, "info", f"{COLOR_GREEN}✓{COLOR_RESET} {filepath} ({fmt}) - Valid syntax")
+            results.append((filepath, True))
+        else:
+            log(args, "error", msg)
+            all_valid = False
+            results.append((filepath, False))
+    
+    # Summary
+    if not args.quiet and results:
+        total = len(results)
+        valid = sum(1 for _, v in results if v)
+        invalid = total - valid
+        
+        log(args, "info", "")
+        if invalid == 0:
+            log(args, "info", f"{COLOR_GREEN}✓ All {total} configuration file(s) have valid syntax{COLOR_RESET}")
+        else:
+            log(args, "warning", f"{COLOR_RED}✗ {invalid}/{total} configuration file(s) have syntax errors{COLOR_RESET}")
+    
+    return all_valid
+
+
+def cmd_check_perms(args) -> bool:
+    """
+    Check and optionally fix permissions for deployed symlinks.
+
+    This command checks the permissions of files that have been deployed
+    via symlinks to sensitive locations (SSH keys, shell configs, etc.).
+    """
+    config_file = "xdotter.toml"
+    log(args, "debug", f"Checking permissions from {config_file}")
+
+    try:
+        with open(config_file, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        log(args, "error", f"Config file not found: '{config_file}'")
+        return False
+    except PermissionError as e:
+        log(args, "error", f"Permission denied reading '{config_file}': {e}")
+        return False
+    except OSError as e:
+        log(args, "error", f"Failed to read config '{config_file}': {e}")
+        return False
+
+    try:
+        config = ConfigParser.parse(content)
+    except Exception as e:
+        log(args, "error", f"Failed to parse config: {e}")
+        return False
+    
+    home_dir = get_home_dir()
+    success = True
+    checked_count = 0
+    fixed_count = 0
+    
+    # Check permissions for all links
+    for actual_path, link in config.get("links", {}).items():
+        link_path = Path(link.replace("~", str(home_dir))).expanduser()
+        
+        # Only check if symlink exists
+        if not link_path.is_symlink():
+            log(args, "debug", f"Skipping {link}: not a symlink")
+            continue
+        
+        # Get the target file (resolve symlink)
+        try:
+            target_path = link_path.resolve()
+        except OSError as e:
+            log(args, "error", f"Cannot resolve {link}: {e}")
+            success = False
+            continue
+        
+        # Check if this is a sensitive path
+        perm_info = get_required_permission(link_path)
+        
+        if perm_info:
+            required_mode, description = perm_info
+            checked_count += 1
+            
+            # Check permission
+            is_correct, msg = check_permission(target_path, required_mode, description, args)
+            
+            if is_correct:
+                log(args, "info", msg)
+            else:
+                log(args, "warning", msg)
+                
+                # Fix if requested
+                if getattr(args, 'fix_permissions', False):
+                    if args.dry_run:
+                        log(args, "info", f"Would fix permission for {target_path}")
+                    else:
+                        ok, fix_msg = fix_permission(target_path, required_mode, args)
+                        log(args, "info", fix_msg)
+                        if ok:
+                            fixed_count += 1
+                        else:
+                            success = False
+                else:
+                    success = False  # Report failure if not fixing
+    
+    # Summary
+    if not args.quiet:
+        log(args, "info", f"Checked {checked_count} sensitive file(s)")
+        if getattr(args, 'fix_permissions', False):
+            log(args, "info", f"Fixed {fixed_count} file(s)")
+    
+    return success
+
+
 def cmd_new():
     """Create a new xdotter.toml template"""
     template = """# xdotter configuration file
@@ -615,14 +1015,15 @@ USAGE:
     python xd.py [COMMAND] [OPTIONS]
 
 COMMANDS:
-    deploy      Deploy dotfiles (default command)
-    undeploy    Remove deployed dotfiles
-    new         Create a new xdotter.toml template
-    help        Print this help message
-    version     Print version
+    deploy              Deploy dotfiles (default command)
+    undeploy            Remove deployed dotfiles
+    check-permissions   Check/fix permissions for deployed files
+    validate            Validate configuration file syntax
+    new                 Create a new xdotter.toml template
+    help                Print this help message
+    version             Print version
 
 OPTIONS:
-    -c, --config <FILE>     Specify configuration file [default: xdotter.toml]
     -v, --verbose           Show more information
     -q, --quiet             Do not print any output
     -n, --dry-run           Show what would be done without making changes
@@ -630,15 +1031,17 @@ OPTIONS:
     -f, --force             Force overwrite existing files
     --check-permissions     Check permissions for sensitive files (SSH, GPG, etc.)
     --fix-permissions       Fix permissions for sensitive files
+    --no-validate           Skip config syntax validation during deploy
 
 EXAMPLES:
-    python xd.py                      Deploy using default xdotter.toml
+    python xd.py                      Deploy using xdotter.toml
     python xd.py deploy -v            Deploy with verbose output
     python xd.py deploy --check-permissions   Check sensitive file permissions
     python xd.py deploy --fix-permissions     Fix sensitive file permissions
+    python xd.py validate               Validate configuration file syntax
+    python xd.py check-permissions --fix-permissions  Fix permissions for deployed files
     python xd.py undeploy -n          Dry-run undeploy
     python xd.py new                  Create new configuration
-    python xd.py -c myconfig.toml     Use custom config file
 
 INSTALLATION:
     # Download
@@ -672,13 +1075,8 @@ def main():
     parser.add_argument(
         "command",
         nargs="?",
-        choices=["deploy", "undeploy", "new", "help", "version"],
+        choices=["deploy", "undeploy", "check-permissions", "validate", "new", "help", "version"],
         help="Command to execute",
-    )
-    parser.add_argument(
-        "-c", "--config",
-        default="xdotter.toml",
-        help="Specify configuration file [default: xdotter.toml]"
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -704,6 +1102,17 @@ def main():
         "-f", "--force",
         action="store_true",
         help="Force overwrite existing files"
+    )
+    parser.add_argument(
+        "--no-validate",
+        action="store_true",
+        dest="no_validate",
+        help="Skip config syntax validation during deploy"
+    )
+    parser.add_argument(
+        "files",
+        nargs="*",
+        help="Configuration files to validate (for validate command)"
     )
     parser.add_argument(
         "-h", "--help",
@@ -748,6 +1157,24 @@ def main():
         cmd_new()
         return 0
 
+    # Handle validate command
+    if args.command == "validate":
+        if args.dry_run:
+            log(args, "info", "Validating configuration (dry-run)...")
+        else:
+            log(args, "info", "Validating configuration...")
+        success = cmd_validate(args)
+        return 0 if success else 1
+
+    # Handle check-permissions command
+    if args.command == "check-permissions":
+        if args.dry_run:
+            log(args, "info", "Checking permissions (dry-run)...")
+        else:
+            log(args, "info", "Checking permissions...")
+        success = cmd_check_perms(args)
+        return 0 if success else 1
+
     # Default to deploy if no command specified
     command = args.command or "deploy"
 
@@ -756,7 +1183,7 @@ def main():
             log(args, "info", "Deploying (dry-run)...")
         else:
             log(args, "info", "Deploying...")
-        success = deploy_on(args.config, args)
+        success = deploy_on("xdotter.toml", args)
         return 0 if success else 1
 
     elif command == "undeploy":
@@ -764,7 +1191,7 @@ def main():
             log(args, "info", "Undeploying (dry-run)...")
         else:
             log(args, "info", "Undeploying...")
-        success = undeploy_on(args.config, args)
+        success = undeploy_on("xdotter.toml", args)
         return 0 if success else 1
 
     return 0

@@ -103,20 +103,20 @@ def test_deploy_basic_link():
         source_file.write_text("test content")
         
         # Create config
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source/test.txt" = "~/.cache/xdotter_test_{os.getpid()}.txt"
 ''')
-        
+
         target_path = Path.home() / f".cache/xdotter_test_{os.getpid()}.txt"
-        
+
         try:
             # Ensure target dir exists
             target_path.parent.mkdir(exist_ok=True)
-            
+
             # Run from the temp directory so relative paths work
-            code, stdout, stderr = run_xd(["-c", "test.toml", "deploy", "-v"], cwd=tmpdir)
+            code, stdout, stderr = run_xd(["deploy", "-v"], cwd=tmpdir)
             
             if code == 0 and target_path.is_symlink():
                 log_test("Deploy creates symlink", "PASS")
@@ -147,21 +147,21 @@ def test_deploy_dry_run():
         source_file.write_text("test content")
         
         # Create config
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source/test.txt" = "~/.cache/xdotter_dryrun_{os.getpid()}.txt"
 ''')
-        
+
         target_path = Path.home() / f".cache/xdotter_dryrun_{os.getpid()}.txt"
-        
+
         try:
             # Ensure target doesn't exist
             if target_path.exists():
                 target_path.unlink()
-            
+
             # Run from temp directory
-            code, stdout, stderr = run_xd(["-c", "test.toml", "deploy", "-n", "-v"], cwd=tmpdir)
+            code, stdout, stderr = run_xd(["deploy", "-n", "-v"], cwd=tmpdir)
             
             if code == 0 and not target_path.exists():
                 log_test("Dry run does not create files", "PASS")
@@ -190,25 +190,25 @@ def test_undeploy():
         source_file.write_text("test content")
         
         # Create config
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source/test.txt" = "~/.cache/xdotter_undeploy_{os.getpid()}.txt"
 ''')
-        
+
         target_path = Path.home() / f".cache/xdotter_undeploy_{os.getpid()}.txt"
-        
+
         try:
             target_path.parent.mkdir(exist_ok=True)
-            
+
             # First deploy (run from temp dir)
-            code, _, _ = run_xd(["-c", "test.toml", "deploy"], cwd=tmpdir)
-            
+            code, _, _ = run_xd(["deploy"], cwd=tmpdir)
+
             if target_path.is_symlink():
                 log_test("Precondition: symlink exists", "PASS")
-                
+
                 # Then undeploy
-                code, stdout, stderr = run_xd(["-c", "test.toml", "undeploy", "-v"], cwd=tmpdir)
+                code, stdout, stderr = run_xd(["undeploy", "-v"], cwd=tmpdir)
                 
                 if code == 0 and not target_path.exists():
                     log_test("Undeploy removes symlink", "PASS")
@@ -234,20 +234,20 @@ def test_deploy_with_tilde():
         source_file.write_text("test content")
         
         # Create config with ~ in target
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source/test.txt" = "~/.cache/xdotter_tilde_{os.getpid()}.txt"
 ''')
-        
+
         target_path = Path.home() / f".cache/xdotter_tilde_{os.getpid()}.txt"
-        
+
         try:
             target_path.parent.mkdir(exist_ok=True)
-            
+
             # Run from temp directory
-            code, stdout, stderr = run_xd(["-c", "test.toml", "deploy", "-v"], cwd=tmpdir)
-            
+            code, stdout, stderr = run_xd(["deploy", "-v"], cwd=tmpdir)
+
             if code == 0 and target_path.is_symlink():
                 log_test("Tilde expansion works", "PASS")
             else:
@@ -262,11 +262,11 @@ def test_quiet_mode():
     
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
-        
+
         # Create config that doesn't exist to see quiet behavior
-        config = tmppath / "nonexistent.toml"
-        
-        code, stdout, stderr = run_xd(["-c", str(config), "deploy", "-q"])
+        config = tmppath / "xdotter.toml"
+
+        code, stdout, stderr = run_xd(["deploy", "-q"])
         
         # Quiet mode should suppress output but still have error code
         if len(stdout.strip()) == 0:
@@ -288,19 +288,19 @@ def test_verbose_mode():
         source_file.write_text("test content")
         
         # Create config
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source/test.txt" = "~/.cache/xdotter_verbose_{os.getpid()}.txt"
 ''')
-        
+
         target_path = Path.home() / f".cache/xdotter_verbose_{os.getpid()}.txt"
-        
+
         try:
             target_path.parent.mkdir(exist_ok=True)
-            
-            code, stdout, stderr = run_xd(["-c", str(config), "deploy", "-v"])
-            
+
+            code, stdout, stderr = run_xd(["deploy", "-v"])
+
             if "[DEBUG]" in stdout or "DEBUG" in stdout:
                 log_test("Verbose mode shows debug info", "PASS")
             else:
@@ -330,15 +330,15 @@ def test_force_flag():
         target_path.write_text("old content")
         
         # Create config
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source/test.txt" = "~/.cache/xdotter_force_{os.getpid()}.txt"
 ''')
-        
+
         try:
             # Try with force (run from temp dir)
-            code, stdout, stderr = run_xd(["-c", "test.toml", "deploy", "-f", "-v"], cwd=tmpdir)
+            code, stdout, stderr = run_xd(["deploy", "-f", "-v"], cwd=tmpdir)
             
             if code == 0 and target_path.is_symlink():
                 log_test("Force flag overwrites existing file", "PASS")
@@ -397,27 +397,27 @@ def test_multiple_links():
         (source_dir / "file3.txt").write_text("content3")
         
         # Create config with multiple links
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source/file1.txt" = "~/.cache/xdotter_multi_1_{os.getpid()}.txt"
 "source/file2.txt" = "~/.cache/xdotter_multi_2_{os.getpid()}.txt"
 "source/file3.txt" = "~/.cache/xdotter_multi_3_{os.getpid()}.txt"
 ''')
-        
+
         targets = [
             Path.home() / f".cache/xdotter_multi_{i}_{os.getpid()}.txt"
             for i in range(1, 4)
         ]
-        
+
         try:
             for t in targets:
                 t.parent.mkdir(exist_ok=True)
                 if t.exists():
                     t.unlink()
-            
+
             # Run from temp directory
-            code, stdout, stderr = run_xd(["-c", "test.toml", "deploy", "-v"], cwd=tmpdir)
+            code, stdout, stderr = run_xd(["deploy", "-v"], cwd=tmpdir)
             
             all_exist = all(t.is_symlink() for t in targets)
             
@@ -472,7 +472,7 @@ def test_dependencies_subdirectory():
 ''')
         
         # Main config with dependency
-        main_config = tmppath / "test.toml"
+        main_config = tmppath / "xdotter.toml"
         main_config.write_text(f'''
 [links]
 "main.txt" = "~/.cache/xdotter_main_{os.getpid()}.txt"
@@ -480,15 +480,15 @@ def test_dependencies_subdirectory():
 [dependencies]
 "sub" = "sub"
 ''')
-        
+
         main_target = Path.home() / f".cache/xdotter_main_{os.getpid()}.txt"
         sub_target = Path.home() / f".cache/xdotter_sub_{os.getpid()}.txt"
-        
+
         try:
             main_target.parent.mkdir(exist_ok=True)
-            
+
             # Run from temp directory
-            code, stdout, stderr = run_xd(["-c", "test.toml", "deploy", "-v"], cwd=tmpdir)
+            code, stdout, stderr = run_xd(["deploy", "-v"], cwd=tmpdir)
             
             main_ok = main_target.is_symlink()
             sub_ok = sub_target.is_symlink()
@@ -519,29 +519,29 @@ def test_interactive_mode_confirm():
         source_file.write_text("test content")
         
         # Create config
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source/test.txt" = "~/.cache/xdotter_inter_{os.getpid()}.txt"
 ''')
-        
+
         target_path = Path.home() / f".cache/xdotter_inter_{os.getpid()}.txt"
-        
+
         try:
             target_path.parent.mkdir(exist_ok=True)
-            
+
             # First deploy
-            run_xd(["-c", "test.toml", "deploy"], cwd=tmpdir)
-            
+            run_xd(["deploy"], cwd=tmpdir)
+
             if target_path.is_symlink():
                 log_test("Precondition: symlink exists", "PASS")
-                
+
                 # Remove source to create a different one
                 source_file.write_text("different content")
-                
+
                 # Try interactive mode with 'n' (no)
                 code, stdout, stderr = run_xd(
-                    ["-c", "test.toml", "deploy", "-i"],
+                    ["deploy", "-i"],
                     cwd=tmpdir,
                     input_data="n\n"
                 )
@@ -582,16 +582,16 @@ def test_interactive_mode_yes():
         source_file.write_text("new content")
         
         # Create config
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source/test.txt" = "~/.cache/xdotter_intery_{os.getpid()}.txt"
 ''')
-        
+
         try:
             # Try interactive mode with 'y' (yes)
             code, stdout, stderr = run_xd(
-                ["-c", "test.toml", "deploy", "-i"],
+                ["deploy", "-i"],
                 cwd=tmpdir,
                 input_data="y\n"
             )
@@ -615,20 +615,20 @@ def test_nonexistent_source():
     
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
-        
+
         # Create config pointing to nonexistent file
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "nonexistent.txt" = "~/.cache/xdotter_noexist_{os.getpid()}.txt"
 ''')
-        
+
         target_path = Path.home() / f".cache/xdotter_noexist_{os.getpid()}.txt"
-        
+
         try:
             target_path.parent.mkdir(exist_ok=True)
-            
-            code, stdout, stderr = run_xd(["-c", "test.toml", "deploy", "-v"], cwd=tmpdir)
+
+            code, stdout, stderr = run_xd(["deploy", "-v"], cwd=tmpdir)
             
             # Should fail gracefully, not crash
             if "does not exist" in stderr or "does not exist" in stdout or code != 0:
@@ -647,7 +647,7 @@ def test_nonexistent_config():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
 
-        code, stdout, stderr = run_xd(["-c", "nonexistent.toml", "deploy"], cwd=tmpdir)
+        code, stdout, stderr = run_xd(["deploy"], cwd=tmpdir)
 
         # Should fail with appropriate error
         if code != 0 and ("not found" in stderr.lower() or "failed to read" in stderr.lower() or "no such file" in stderr.lower()):
@@ -662,15 +662,15 @@ def test_invalid_toml_syntax():
     
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
-        
+
         # Create invalid TOML
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text('''
 [links
 "invalid" = "syntax
 ''')
-        
-        code, stdout, stderr = run_xd(["-c", "test.toml", "deploy"], cwd=tmpdir)
+
+        code, stdout, stderr = run_xd(["deploy"], cwd=tmpdir)
         
         # Should fail gracefully
         if code != 0 or "parse" in stderr.lower():
@@ -686,12 +686,12 @@ def test_empty_config():
     
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
-        
+
         # Create empty config
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text("")
-        
-        code, stdout, stderr = run_xd(["-c", "test.toml", "deploy"], cwd=tmpdir)
+
+        code, stdout, stderr = run_xd(["deploy"], cwd=tmpdir)
         
         # Should succeed with nothing to do
         if code == 0:
@@ -722,15 +722,15 @@ def test_symlink_already_exists():
         os.symlink(source_resolved, target_path)
         
         # Create config
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source/test.txt" = "~/.cache/xdotter_exist_{os.getpid()}.txt"
 ''')
-        
+
         try:
-            code, stdout, stderr = run_xd(["-c", "test.toml", "deploy", "-v"], cwd=tmpdir)
-            
+            code, stdout, stderr = run_xd(["deploy", "-v"], cwd=tmpdir)
+
             # Should skip, not error
             if code == 0 and target_path.is_symlink():
                 log_test("Skips existing correct symlink", "PASS")
@@ -755,19 +755,19 @@ def test_unicode_paths():
         source_file.write_text("中文内容 Chinese content")
         
         # Create config
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "测试目录/测试文件.txt" = "~/.cache/xdotter_unicode_{os.getpid()}.txt"
 ''')
-        
+
         target_path = Path.home() / f".cache/xdotter_unicode_{os.getpid()}.txt"
-        
+
         try:
             target_path.parent.mkdir(exist_ok=True)
-            
-            code, stdout, stderr = run_xd(["-c", "test.toml", "deploy"], cwd=tmpdir)
-            
+
+            code, stdout, stderr = run_xd(["deploy"], cwd=tmpdir)
+
             if code == 0 and target_path.is_symlink():
                 log_test("Unicode paths work", "PASS")
             else:
@@ -791,17 +791,17 @@ def test_absolute_path_in_config():
         target_path = Path.home() / f".cache/xdotter_abs_{os.getpid()}.txt"
         
         # Create config with absolute path
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "{source_file}" = "~/.cache/xdotter_abs_{os.getpid()}.txt"
 ''')
-        
+
         try:
             target_path.parent.mkdir(exist_ok=True)
-            
-            code, stdout, stderr = run_xd(["-c", "test.toml", "deploy"], cwd=tmpdir)
-            
+
+            code, stdout, stderr = run_xd(["deploy"], cwd=tmpdir)
+
             if code == 0 and target_path.is_symlink():
                 log_test("Absolute paths in config work", "PASS")
             else:
@@ -817,15 +817,15 @@ def test_undeploy_nonexistent_link():
     
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
-        
+
         # Create config for nonexistent link
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source.txt" = "~/.cache/xdotter_nolink_{os.getpid()}.txt"
 ''')
-        
-        code, stdout, stderr = run_xd(["-c", "test.toml", "undeploy", "-v"], cwd=tmpdir)
+
+        code, stdout, stderr = run_xd(["undeploy", "-v"], cwd=tmpdir)
         
         # Should succeed (skip nonexistent)
         if code == 0:
@@ -848,7 +848,7 @@ def test_comments_in_config():
         source_file.write_text("test content")
         
         # Create config with comments
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 # This is a comment
 [links]
@@ -859,14 +859,14 @@ def test_comments_in_config():
 [dependencies]
 # Empty dependencies is ok
 ''')
-        
+
         target_path = Path.home() / f".cache/xdotter_comment_{os.getpid()}.txt"
-        
+
         try:
             target_path.parent.mkdir(exist_ok=True)
-            
-            code, stdout, stderr = run_xd(["-c", "test.toml", "deploy"], cwd=tmpdir)
-            
+
+            code, stdout, stderr = run_xd(["deploy"], cwd=tmpdir)
+
             if code == 0 and target_path.is_symlink():
                 log_test("Comments in config handled", "PASS")
             else:
@@ -890,19 +890,19 @@ def test_whitespace_in_config():
         source_file.write_text("test content")
         
         # Create config with extra whitespace
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
-  "source/test.txt"   =   "~/.cache/xdotter_ws_{os.getpid()}.txt"  
+  "source/test.txt"   =   "~/.cache/xdotter_ws_{os.getpid()}.txt"
 ''')
-        
+
         target_path = Path.home() / f".cache/xdotter_ws_{os.getpid()}.txt"
-        
+
         try:
             target_path.parent.mkdir(exist_ok=True)
-            
-            code, stdout, stderr = run_xd(["-c", "test.toml", "deploy"], cwd=tmpdir)
-            
+
+            code, stdout, stderr = run_xd(["deploy"], cwd=tmpdir)
+
             if code == 0 and target_path.is_symlink():
                 log_test("Whitespace in config handled", "PASS")
             else:
@@ -926,7 +926,7 @@ def test_single_quotes_in_config():
         source_file.write_text("test content")
 
         # Create config with single quotes
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f"""
 [links]
 'source/test.txt' = '~/.cache/xdotter_sq_{os.getpid()}.txt'
@@ -937,7 +937,7 @@ def test_single_quotes_in_config():
         try:
             target_path.parent.mkdir(exist_ok=True)
 
-            code, stdout, stderr = run_xd(["-c", "test.toml", "deploy"], cwd=tmpdir)
+            code, stdout, stderr = run_xd(["deploy"], cwd=tmpdir)
 
             if code == 0 and target_path.is_symlink():
                 log_test("Single quotes in config work", "PASS")
@@ -968,7 +968,7 @@ def test_permission_check_ssh_key():
 
         # Create config - use ~/.ssh/id_ed25519 to match sensitive pattern
         # Filename must match pattern "id_ed25519*" for detection
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source/id_ed25519" = "~/.ssh/id_ed25519_xdotter_test_{os.getpid()}"
@@ -979,9 +979,9 @@ def test_permission_check_ssh_key():
         try:
             target_path.parent.mkdir(exist_ok=True)
 
-            # Deploy with --check-permissions
+            # Deploy with --check-permissions --force (to allow deployment despite permission issue)
             code, stdout, stderr = run_xd(
-                ["-c", "test.toml", "deploy", "--check-permissions", "-v"],
+                ["deploy", "--check-permissions", "--force", "-v"],
                 cwd=tmpdir
             )
 
@@ -1012,7 +1012,7 @@ def test_permission_fix_ssh_key():
 
         # Create config - use filename that matches id_ed25519* pattern
         # Pattern: id_ed25519* matches filenames starting with "id_ed25519"
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source/id_ed25519" = "~/.ssh/id_ed25519_xdotter_test_{os.getpid()}"
@@ -1023,9 +1023,9 @@ def test_permission_fix_ssh_key():
         try:
             target_path.parent.mkdir(exist_ok=True)
 
-            # Deploy with --fix-permissions
+            # Deploy with --fix-permissions (automatically fixes and allows deployment)
             code, stdout, stderr = run_xd(
-                ["-c", "test.toml", "deploy", "--fix-permissions", "-v"],
+                ["deploy", "--fix-permissions", "-v"],
                 cwd=tmpdir
             )
 
@@ -1059,7 +1059,7 @@ def test_permission_check_correct_permission():
         source_file.chmod(0o600)
 
         # Create config - use ~/.ssh/ path with filename matching pattern
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source/id_ed25519" = "~/.ssh/id_ed25519_xdotter_correct_{os.getpid()}"
@@ -1070,9 +1070,9 @@ def test_permission_check_correct_permission():
         try:
             target_path.parent.mkdir(exist_ok=True)
 
-            # Deploy with --check-permissions
+            # Deploy with --check-permissions --force (to allow deployment)
             code, stdout, stderr = run_xd(
-                ["-c", "test.toml", "deploy", "--check-permissions", "-v"],
+                ["deploy", "--check-permissions", "--force", "-v"],
                 cwd=tmpdir
             )
 
@@ -1114,7 +1114,7 @@ def test_permission_pattern_matching():
             f.chmod(0o644)
 
         # Create config - use ~/.ssh/ paths with filenames that match patterns
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         links = '\n'.join([f'"source/{src}" = "~/.ssh/{tgt}"'
                           for src, tgt, _ in test_cases])
         config.write_text(f'''
@@ -1122,9 +1122,9 @@ def test_permission_pattern_matching():
 {links}
 ''')
 
-        # Deploy with --check-permissions
+        # Deploy with --check-permissions --force (to allow deployment despite permission issues)
         code, stdout, stderr = run_xd(
-            ["-c", "test.toml", "deploy", "--check-permissions", "-v"],
+            ["deploy", "--check-permissions", "--force", "-v"],
             cwd=tmpdir
         )
 
@@ -1157,7 +1157,7 @@ def test_permission_dry_run():
         source_file.chmod(0o644)
 
         # Create config - use ~/.ssh/ path to match sensitive pattern
-        config = tmppath / "test.toml"
+        config = tmppath / "xdotter.toml"
         config.write_text(f'''
 [links]
 "source/id_ed25519" = "~/.ssh/xdotter_dry_perm_{os.getpid()}"
@@ -1170,7 +1170,7 @@ def test_permission_dry_run():
 
             # Deploy with --fix-permissions --dry-run
             code, stdout, stderr = run_xd(
-                ["-c", "test.toml", "deploy", "--fix-permissions", "-n", "-v"],
+                ["deploy", "--fix-permissions", "-n", "-v"],
                 cwd=tmpdir
             )
 

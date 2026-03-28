@@ -59,9 +59,6 @@ xd deploy -v
 # Dry-run (see what would happen)
 xd deploy -n
 
-# Use a custom config file
-xd -c myconfig.toml deploy
-
 # Undeploy (remove symlinks)
 xd undeploy
 
@@ -75,6 +72,8 @@ xd undeploy -i
 |---------|-------------|
 | `deploy` | Deploy dotfiles (default) |
 | `undeploy` | Remove deployed dotfiles |
+| `check-permissions` | Check/fix permissions for deployed files |
+| `validate` | Validate configuration file syntax |
 | `new` | Create a new `xdotter.toml` template |
 | `help` | Print help message |
 | `version` | Print version |
@@ -83,7 +82,6 @@ xd undeploy -i
 
 | Option | Description |
 |--------|-------------|
-| `-c, --config <FILE>` | Specify configuration file [default: `xdotter.toml`] |
 | `-v, --verbose` | Show more information |
 | `-q, --quiet` | Do not print any output |
 | `-n, --dry-run` | Show what would be done without making changes |
@@ -91,21 +89,56 @@ xd undeploy -i
 | `-f, --force` | Force overwrite existing files |
 | `--check-permissions` | Check permissions for sensitive files (SSH, GPG, etc.) |
 | `--fix-permissions` | Fix permissions for sensitive files |
+| `--no-validate` | Skip config syntax validation during deploy |
 
 ### Permission Checking
 
 xdotter can check and fix permissions for sensitive files based on their target location:
 
 ```bash
-# Check permissions for sensitive files
+# Check permissions during deployment
 xd deploy --check-permissions
 
-# Check and fix permissions
+# Check and fix permissions during deployment
 xd deploy --fix-permissions
 
 # Dry-run to see what would be fixed
 xd deploy --fix-permissions -n
+
+# Check permissions for already deployed files
+xd check-permissions
+
+# Fix permissions for deployed files
+xd check-permissions --fix-permissions
 ```
+
+### Configuration Validation
+
+xdotter automatically validates configuration syntax before deployment:
+
+```bash
+# Validate configuration (auto-run during deploy)
+xd validate
+
+# Validate specific files
+xd validate myconfig.toml
+xd validate config1.toml config2.json
+
+# Skip validation during deploy (emergency)
+xd deploy --no-validate
+```
+
+**Supported formats:**
+
+| Format | Extension | Validator |
+|--------|-----------|-----------|
+| TOML | `.toml` | tomli (vendored) |
+| JSON | `.json` | json (stdlib) |
+
+**Error output includes:**
+- Line and column numbers
+- Context (surrounding lines)
+- Fix suggestions in Chinese
 
 **Supported sensitive paths:**
 
@@ -118,6 +151,11 @@ xd deploy --fix-permissions -n
 | `~/.gnupg/private-keys-v1.d/` | 700 | GPG private keys directory |
 | `~/.netrc` | 600 | Netrc password file |
 | `~/.pgpass` | 600 | PostgreSQL password file |
+| `~/.bashrc`, `~/.zshrc` | 644 | Shell configs (affect PATH and env vars) |
+| `~/.bash_profile`, `~/.profile` | 644 | Login profiles |
+| `~/.xinitrc`, `~/.xsession` | 755 | X11 session scripts (must be executable) |
+| `~/.xprofile` | 644 | X session environment |
+| `~/.Xauthority` | 600 | X11 authentication |
 
 **Filename patterns:**
 
@@ -127,6 +165,7 @@ Files matching these patterns are automatically detected as sensitive:
 - `*_rsa`, `*_ed25519`, `*_ecdsa`, `*_dsa` - Named SSH private keys
 - `*.pem`, `*.key` - Certificate/key files
 - `*.gpg`, `*.asc` - GPG files
+- `*.bashrc`, `*.zshrc`, `*.profile` - Shell config backups
 
 ## Configuration
 
