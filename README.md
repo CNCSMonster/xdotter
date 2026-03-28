@@ -232,7 +232,7 @@ python3 test_xd.py
 Test with isolated environment using bubblewrap:
 
 ```bash
-./bwrap-test.sh
+./scripts/bwrap-test.sh
 ```
 
 This runs a complete deployment test of `cncsmonster/dotfiles` in an isolated sandbox.
