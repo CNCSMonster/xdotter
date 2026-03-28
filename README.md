@@ -284,40 +284,54 @@ This runs a complete deployment test of `cncsmonster/dotfiles` in an isolated sa
 
 ## Shell Completion
 
+xdotter uses [argcomplete](https://github.com/kislyuk/argcomplete) for automatic shell completion generation from argparse definitions.
+
 ### Bash
 
 ```bash
-# Temporary (current session)
-source <(xd completion bash)
+# One-time setup
+eval "$(register-python-argcomplete xd)"
 
-# Permanent
-xd completion bash > ~/.local/share/bash-completion/completions/xd
-# Or add to ~/.bashrc:
-echo 'source <(xd completion bash)' >> ~/.bashrc
+# Or add to ~/.bashrc for permanent:
+echo 'eval "$(register-python-argcomplete xd)"' >> ~/.bashrc
+
+# If xd is installed via .pyz, use:
+eval "$(register-python-argcomplete --external-argcomplete-script ~/.local/bin/xd xd)"
 ```
 
 ### Zsh
 
 ```bash
-# Temporary (current session)
-source <(xd completion zsh)
+# One-time setup
+eval "$(register-python-argcomplete --shell zsh xd)"
 
-# Permanent
-xd completion zsh > ~/.local/share/zsh/site-functions/_xd
-# Or add to ~/.zshrc:
-echo 'source <(xd completion zsh)' >> ~/.zshrc
+# Or add to ~/.zshrc for permanent:
+echo 'eval "$(register-python-argcomplete --shell zsh xd)"' >> ~/.zshrc
 ```
 
 ### Fish
 
 ```bash
-# Temporary (current session)
-source (xd completion fish | psub)
+# One-time setup
+register-python-argcomplete --shell fish xd | source
 
-# Permanent
+# Or add to config.fish for permanent:
+register-python-argcomplete --shell fish xd >> ~/.config/fish/completions/xd.fish
+```
+
+### Alternative: Static Completion Scripts
+
+If you prefer static completion scripts (no argcomplete dependency):
+
+```bash
+# Bash
+xd completion bash > ~/.local/share/bash-completion/completions/xd
+
+# Zsh
+xd completion zsh > ~/.local/share/zsh/site-functions/_xd
+
+# Fish
 xd completion fish > ~/.config/fish/completions/xd.fish
-# Or add to config.fish:
-echo 'source (xd completion fish | psub)' >> ~/.config/fish/config.fish
 ```
 
 ## License

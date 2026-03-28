@@ -26,6 +26,10 @@ Options:
     --fix-permissions       Fix permissions for sensitive files (implies --check-permissions)
     --no-validate           Skip config syntax validation during deploy
 
+Note:
+    Shell completion uses vendored argcomplete for automatic generation
+    from argparse definition (no manual maintenance required).
+
 Requires: Python 3.8+
 """
 
@@ -44,6 +48,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from _vendor.tomli import loads, TOMLDecodeError
+# Vendored argcomplete for shell completion (optional, for development)
+# try:
+#     from _vendor.argcomplete import autocomplete
+#     HAS_ARGCOMPLETE = True
+# except ImportError:
+#     HAS_ARGCOMPLETE = False
 
 
 # ANSI color codes for output
@@ -1266,6 +1276,15 @@ def main():
         dest="fix_permissions",
         help="Fix permissions for sensitive files (implies --check-permissions)"
     )
+
+    # Enable argcomplete autocomplete (if available)
+    # This is automatically activated when COMP_LINE env var is set by bash
+    try:
+        from _vendor.argcomplete import autocomplete
+        autocomplete(parser)
+    except (ImportError, TypeError):
+        # argcomplete not vendored or not running in completion context
+        pass
 
     args = parser.parse_args()
     

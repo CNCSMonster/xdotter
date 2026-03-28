@@ -6,7 +6,13 @@
       "Bash(source *)",
       "Bash(complete *)",
       "Bash(_xd_completions)",
-      "Bash(bash *)"
+      "Bash(bash *)",
+      "Bash(pip show *)",
+      "Bash(curl *)",
+      "Bash(pip install *)",
+      "Bash(echo *)",
+      "Bash(head *)",
+      "Bash(mv *)"
     ]
   },
   "$version": 3
