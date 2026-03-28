@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Shell completion support** - Generate completion scripts for Bash, Zsh, and Fish
+  - `xd completion bash` - Generate Bash completion script
+  - `xd completion zsh` - Generate Zsh completion script
+  - `xd completion fish` - Generate Fish completion script
+  - Installation instructions in README.md
+  
 - **New `validate` command** - Check configuration file syntax before deployment
   - `xd validate` - Validate xdotter.toml or xdotter.json
   - `xd validate file1.toml file2.json` - Validate specific files

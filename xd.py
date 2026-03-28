@@ -4,13 +4,14 @@ xdotter - A simple dotfile manager
 Single-file, no dependencies, easy to distribute
 
 Usage:
-    python xd.py [COMMAND] [OPTIONS]
+    xd [COMMAND] [OPTIONS]
 
 Commands:
     deploy              Deploy dotfiles (default)
     undeploy            Remove deployed dotfiles
     check-permissions   Check/fix permissions for deployed files
     validate            Validate configuration file syntax
+    completion          Generate shell completion scripts
     new                 Create a new xdotter.toml template
     help                Print this help message
     version             Print version
@@ -1007,6 +1008,124 @@ def cmd_new():
     print(f"Created {config_file}")
 
 
+# Shell completion scripts
+BASH_COMPLETION_SCRIPT = r'''# Bash completion for xdotter
+# Place in: ~/.local/share/bash-completion/completions/xd
+# Or source: source <(xd completion bash)
+
+_xd_completions() {
+    local cur prev words cword
+    _init_completion -n := || return
+
+    if [[ $cword -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "deploy undeploy validate check-permissions new completion help version" -- "$cur") )
+        return
+    fi
+
+    case "${words[1]}" in
+        deploy|undeploy)
+            COMPREPLY=( $(compgen -W "-v -q -n -i -f --verbose --quiet --dry-run --interactive --force --check-permissions --fix-permissions --no-validate" -- "$cur") )
+            ;;
+        validate)
+            COMPREPLY=( $(compgen -W "-v -q -n --verbose --quiet --dry-run" -- "$cur") )
+            ;;
+        check-permissions)
+            COMPREPLY=( $(compgen -W "-v -q -n --verbose --quiet --dry-run --fix-permissions" -- "$cur") )
+            ;;
+        completion)
+            COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
+            ;;
+        *)
+            COMPREPLY=( $(compgen -W "-v -q -n -h --verbose --quiet --dry-run --help" -- "$cur") )
+            ;;
+    esac
+}
+
+complete -F _xd_completions xd
+'''
+
+ZSH_COMPLETION_SCRIPT = r'''# Zsh completion for xdotter
+# Place in: ~/.local/share/zsh/site-functions/_xd
+# Or autoload: autoload -Uz compinit && compinit
+
+#compdef xd
+
+_arguments \
+    '1:command:(deploy undeploy validate check-permissions new completion help version)' \
+    '(-v --verbose)*-v[Show more information]' \
+    '(-v --verbose)*--verbose[Show more information]' \
+    '(-q --quiet)*-q[Do not print any output]' \
+    '(-q --quiet)*--quiet[Do not print any output]' \
+    '(-n --dry-run)*-n[Show what would be done]' \
+    '(-n --dry-run)*--dry-run[Show what would be done]' \
+    '(-i --interactive)*-i[Ask for confirmation]' \
+    '(-i --interactive)*--interactive[Ask for confirmation]' \
+    '(-f --force)*-f[Force overwrite existing files]' \
+    '(-f --force)*--force[Force overwrite existing files]' \
+    '--check-permissions[Check permissions for sensitive files]' \
+    '--fix-permissions[Fix permissions for sensitive files]' \
+    '--no-validate[Skip config syntax validation]' \
+    '-h[Print help message]' \
+    '--help[Print help message]' \
+    '-V[Print version]' \
+    '--version[Print version]'
+'''
+
+FISH_COMPLETION_SCRIPT = r'''# Fish completion for xdotter
+# Place in: ~/.config/fish/completions/xd.fish
+# Or source: source (xd completion fish | psub)
+
+complete -c xd -n "__fish_use_subcommand" -a deploy -d "Deploy dotfiles"
+complete -c xd -n "__fish_use_subcommand" -a undeploy -d "Remove deployed dotfiles"
+complete -c xd -n "__fish_use_subcommand" -a validate -d "Validate configuration syntax"
+complete -c xd -n "__fish_use_subcommand" -a check-permissions -d "Check file permissions"
+complete -c xd -n "__fish_use_subcommand" -a new -d "Create new config template"
+complete -c xd -n "__fish_use_subcommand" -a completion -d "Generate shell completion scripts"
+complete -c xd -n "__fish_use_subcommand" -a help -d "Print help message"
+complete -c xd -n "__fish_use_subcommand" -a version -d "Print version"
+
+complete -c xd -s v -l verbose -d "Show more information"
+complete -c xd -s q -l quiet -d "Do not print any output"
+complete -c xd -s n -l dry-run -d "Show what would be done"
+complete -c xd -s i -l interactive -d "Ask for confirmation"
+complete -c xd -s f -l force -d "Force overwrite"
+complete -c xd -l check-permissions -d "Check permissions"
+complete -c xd -l fix-permissions -d "Fix permissions"
+complete -c xd -l no-validate -d "Skip validation"
+'''
+
+
+def cmd_completion(args) -> int:
+    """
+    Generate shell completion scripts.
+    
+    Usage:
+        xd completion bash
+        xd completion zsh
+        xd completion fish
+    """
+    if not hasattr(args, 'shell') or not args.shell:
+        log(args, "error", "Shell name required")
+        log(args, "info", "Usage: xd completion <bash|zsh|fish>")
+        return 1
+    
+    shell = args.shell.lower()
+    
+    if shell == 'bash':
+        print(BASH_COMPLETION_SCRIPT)
+        return 0
+    elif shell == 'zsh':
+        print(ZSH_COMPLETION_SCRIPT)
+        return 0
+    elif shell == 'fish':
+        print(FISH_COMPLETION_SCRIPT)
+        return 0
+    else:
+        log(args, "error", f"Unsupported shell: '{shell}'")
+        log(args, "info", "Supported shells: bash, zsh, fish")
+        return 1
+
+
 def print_help():
     """Print help message"""
     help_text = f"""xdotter - A simple dotfile manager (v{VERSION})
@@ -1019,6 +1138,7 @@ COMMANDS:
     undeploy            Remove deployed dotfiles
     check-permissions   Check/fix permissions for deployed files
     validate            Validate configuration file syntax
+    completion          Generate shell completion scripts
     new                 Create a new xdotter.toml template
     help                Print this help message
     version             Print version
@@ -1039,6 +1159,7 @@ EXAMPLES:
     xd deploy --check-permissions Check sensitive file permissions
     xd deploy --fix-permissions   Fix sensitive file permissions
     xd validate                   Validate configuration file syntax
+    xd completion bash            Generate Bash completion script
     xd check-permissions --fix-permissions  Fix permissions for deployed files
     xd undeploy -n                Dry-run undeploy
     xd new                        Create new configuration
@@ -1075,7 +1196,7 @@ def main():
     parser.add_argument(
         "command",
         nargs="?",
-        choices=["deploy", "undeploy", "check-permissions", "validate", "new", "help", "version"],
+        choices=["deploy", "undeploy", "check-permissions", "validate", "completion", "new", "help", "version"],
         help="Command to execute",
     )
     parser.add_argument(
@@ -1108,6 +1229,11 @@ def main():
         action="store_true",
         dest="no_validate",
         help="Skip config syntax validation during deploy"
+    )
+    parser.add_argument(
+        "shell",
+        nargs="?",
+        help="Shell name for completion command (bash|zsh|fish)"
     )
     parser.add_argument(
         "files",
@@ -1156,6 +1282,10 @@ def main():
     if args.command == "new":
         cmd_new()
         return 0
+
+    # Handle completion command
+    if args.command == "completion":
+        return cmd_completion(args)
 
     # Handle validate command
     if args.command == "validate":

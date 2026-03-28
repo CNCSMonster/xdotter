@@ -282,6 +282,44 @@ This runs a complete deployment test of `cncsmonster/dotfiles` in an isolated sa
 ./scripts/build-pyz.sh
 ```
 
+## Shell Completion
+
+### Bash
+
+```bash
+# Temporary (current session)
+source <(xd completion bash)
+
+# Permanent
+xd completion bash > ~/.local/share/bash-completion/completions/xd
+# Or add to ~/.bashrc:
+echo 'source <(xd completion bash)' >> ~/.bashrc
+```
+
+### Zsh
+
+```bash
+# Temporary (current session)
+source <(xd completion zsh)
+
+# Permanent
+xd completion zsh > ~/.local/share/zsh/site-functions/_xd
+# Or add to ~/.zshrc:
+echo 'source <(xd completion zsh)' >> ~/.zshrc
+```
+
+### Fish
+
+```bash
+# Temporary (current session)
+source (xd completion fish | psub)
+
+# Permanent
+xd completion fish > ~/.config/fish/completions/xd.fish
+# Or add to config.fish:
+echo 'source (xd completion fish | psub)' >> ~/.config/fish/config.fish
+```
+
 ## License
 
 [MIT License](LICENSE)
