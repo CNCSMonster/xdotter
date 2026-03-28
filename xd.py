@@ -1012,7 +1012,7 @@ def print_help():
     help_text = f"""xdotter - A simple dotfile manager (v{VERSION})
 
 USAGE:
-    python xd.py [COMMAND] [OPTIONS]
+    xd [COMMAND] [OPTIONS]
 
 COMMANDS:
     deploy              Deploy dotfiles (default command)
@@ -1034,14 +1034,14 @@ OPTIONS:
     --no-validate           Skip config syntax validation during deploy
 
 EXAMPLES:
-    python xd.py                      Deploy using xdotter.toml
-    python xd.py deploy -v            Deploy with verbose output
-    python xd.py deploy --check-permissions   Check sensitive file permissions
-    python xd.py deploy --fix-permissions     Fix sensitive file permissions
-    python xd.py validate               Validate configuration file syntax
-    python xd.py check-permissions --fix-permissions  Fix permissions for deployed files
-    python xd.py undeploy -n          Dry-run undeploy
-    python xd.py new                  Create new configuration
+    xd                            Deploy using xdotter.toml
+    xd deploy -v                  Deploy with verbose output
+    xd deploy --check-permissions Check sensitive file permissions
+    xd deploy --fix-permissions   Fix sensitive file permissions
+    xd validate                   Validate configuration file syntax
+    xd check-permissions --fix-permissions  Fix permissions for deployed files
+    xd undeploy -n                Dry-run undeploy
+    xd new                        Create new configuration
 
 INSTALLATION:
     # Download
