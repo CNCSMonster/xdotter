@@ -8,22 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Automatic shell completion via argcomplete** - Shell completion now auto-generated from argparse
+  - Vendored argcomplete 3.6.3 (~42KB, no runtime dependencies)
+  - Completion automatically stays in sync with CLI definition
+  - Use `eval "$(register-python-argcomplete xd)"` to activate
+  - Supports Bash, Zsh, and Fish out of the box
+  - No manual maintenance of completion scripts required
+
 - **Shell completion support** - Generate completion scripts for Bash, Zsh, and Fish
   - `xd completion bash` - Generate Bash completion script
   - `xd completion zsh` - Generate Zsh completion script
   - `xd completion fish` - Generate Fish completion script
   - Installation instructions in README.md
-  
+  - Static scripts still available as fallback option
+
 - **New `validate` command** - Check configuration file syntax before deployment
   - `xd validate` - Validate xdotter.toml or xdotter.json
   - `xd validate file1.toml file2.json` - Validate specific files
   - Supports both TOML and JSON formats
   - Provides detailed error messages with line numbers and suggestions
-  
+
 - **Auto-validation during deploy** - Configuration syntax is automatically checked before deployment
   - Prevents deployment with invalid configurations
   - Use `--no-validate` to skip validation (emergency situations)
-  
+
 - **TOML error suggestions** - Common TOML errors include fix suggestions:
   - Unclosed strings, missing `=`, invalid keys, etc.
   - Chinese language hints for common issues
