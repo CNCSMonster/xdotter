@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(source *)",
+      "Bash(complete *)",
+      "Bash(_xd_completions)",
+      "Bash(bash *)"
     ]
   },
   "$version": 3

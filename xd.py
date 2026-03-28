@@ -1015,7 +1015,11 @@ BASH_COMPLETION_SCRIPT = r'''# Bash completion for xdotter
 
 _xd_completions() {
     local cur prev words cword
-    _init_completion -n := || return
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    words=("${COMP_WORDS[@]}")
+    cword="${COMP_CWORD}"
 
     if [[ $cword -eq 1 ]]; then
         COMPREPLY=( $(compgen -W "deploy undeploy validate check-permissions new completion help version" -- "$cur") )
