@@ -42,6 +42,14 @@ from typing import Dict, List, Optional, Tuple
 from _vendor.tomli import loads
 
 
+# ANSI color codes for output
+# Yellow for warnings, Red for errors/risks
+COLOR_YELLOW = "\033[1;33m"  # Bold yellow
+COLOR_RED = "\033[0;31m"     # Red
+COLOR_GREEN = "\033[0;32m"   # Green
+COLOR_RESET = "\033[0m"      # Reset to default
+
+
 def get_version() -> str:
     """Get version from environment variable, git tag, or default."""
     # 1. Check environment variable (set by CI during build)
@@ -256,9 +264,9 @@ def check_permission(path: Path, required_mode: int, description: str, args) -> 
         extra_bits = current_mode & ~required_mode
         
         if extra_bits == 0:
-            return True, f"✓ {description}: {path} (permission: {current_mode:03o})"
+            return True, f"{COLOR_GREEN}✓{COLOR_RESET} {description}: {path} (permission: {current_mode:03o})"
         else:
-            return False, f"✗ {description}: {path} (current: {current_mode:03o}, required: {required_mode:03o})"
+            return False, f"{COLOR_RED}✗{COLOR_RESET} {description}: {path} (current: {current_mode:03o}, required: {required_mode:03o})"
             
     except OSError as e:
         return True, f"Cannot check permission for {path}: {e}"
@@ -295,34 +303,39 @@ def fix_permission(path: Path, required_mode: int, args) -> Tuple[bool, str]:
 def check_permissions_for_link(link: str, args) -> List[str]:
     """
     Check permissions for a link target if it's a sensitive path.
-    
+
     Args:
         link: The link path (where symlink will be placed)
         args: Command line arguments
-    
+
     Returns:
         List of warning/error messages
     """
     messages = []
-    
+
     home_dir = get_home_dir()
     link_path = Path(link.replace("~", str(home_dir))).expanduser()
-    
+
     # Check if this link path is a sensitive path
     perm_info = get_required_permission(link_path)
-    
+
     if perm_info:
         required_mode, description = perm_info
-        
+
         # Check the source file's permission
         is_correct, msg = check_permission(link_path, required_mode, description, args)
+        # Print permission check result directly
+        if is_correct:
+            log(args, "info", msg)
+        else:
+            log(args, "warning", msg)
         messages.append(msg)
-        
+
         # If not correct and fix is requested
         if not is_correct and getattr(args, 'fix_permissions', False):
             success, fix_msg = fix_permission(link_path, required_mode, args)
             messages.append(fix_msg)
-    
+
     return messages
 
 
@@ -335,8 +348,10 @@ def log(args, level: str, msg: str):
         print(msg)
     elif level == "debug" and args.verbose:
         print(f"[DEBUG] {msg}")
+    elif level == "warning":
+        print(f"{COLOR_YELLOW}[WARNING] {msg}{COLOR_RESET}")
     elif level == "error":
-        print(f"[ERROR] {msg}", file=sys.stderr)
+        print(f"{COLOR_RED}[ERROR] {msg}{COLOR_RESET}", file=sys.stderr)
 
 
 def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[str]]:
@@ -369,6 +384,10 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
                     return True, None
 
             # Handle existing file/link
+            # Warn if target exists but is not a symlink to this location
+            if not link_path.is_symlink():
+                log(args, "warning", f"Target exists but is not a symlink: {link_path}")
+            
             if args.interactive:
                 print(f"Link {link_path} exists, remove it? [y/n] ", end="")
                 sys.stdout.flush()
@@ -469,7 +488,6 @@ def deploy_on(config_file: str, args) -> bool:
 
     current_dir = Path.cwd()
     success = True
-    permission_warnings = []
 
     # Process links
     for actual_path, link in config.get("links", {}).items():
@@ -478,11 +496,10 @@ def deploy_on(config_file: str, args) -> bool:
         if not ok:
             log(args, "error", f"failed to create link: {error}")
             success = False
-        
+
         # Check permissions for sensitive paths
         if getattr(args, 'check_permissions', False) or getattr(args, 'fix_permissions', False):
-            warnings = check_permissions_for_link(link, args)
-            permission_warnings.extend(warnings)
+            check_permissions_for_link(link, args)
 
     # Process dependencies
     for dep_name, dep_path in config.get("dependencies", {}).items():
@@ -505,12 +522,6 @@ def deploy_on(config_file: str, args) -> bool:
         finally:
             os.chdir(current_dir)
             log(args, "debug", f"leaving {dep_dir}")
-
-    # Print permission warnings if any
-    if permission_warnings and not args.quiet:
-        print("\n[Permission Check]")
-        for warning in permission_warnings:
-            print(f"  {warning}")
 
     return success
 
