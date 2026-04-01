@@ -826,10 +826,10 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
         home_dir = get_home_dir()
         link_path = Path(link.replace("~", str(home_dir))).expanduser()
 
-        # Check if parent directory is a symlink pointing to actual's parent
-        # If so, the file is already accessible through the parent symlink, skip
+        # Check if parent directory is a symlink
+        # If so, creating a file symlink would overwrite the actual file!
         link_parent = link_path.parent
-        if link_parent.is_symlink():
+        if link_parent.is_symlink() and not actual.is_dir():
             try:
                 parent_target = Path(os.readlink(link_parent))
                 if not parent_target.is_absolute():
@@ -839,12 +839,12 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
                 # Check if actual is inside the parent symlink's target
                 try:
                     actual.relative_to(parent_target_resolved)
-                    # File is already accessible through parent symlink, skip
-                    rel_from_parent = link_path.relative_to(link_parent)
-                    actual_via_parent = parent_target_resolved / rel_from_parent
-                    if actual_via_parent.exists():
-                        log(args, "debug", f"File already accessible via parent symlink, skipping")
-                        return True, None
+                    # WARNING: Creating symlink here would overwrite the actual file!
+                    log(args, "warning", f"Parent directory {link_parent} is a symlink to {parent_target_resolved}")
+                    log(args, "warning", f"Creating symlink at {link_path} would OVERWRITE the actual file at {actual}")
+                    log(args, "warning", "This is likely a configuration error - you already have a directory symlink")
+                    log(args, "warning", "Remove this file entry from xdotter.toml (use directory symlink instead)")
+                    return False, f"Would overwrite actual file (parent is symlink)"
                 except ValueError:
                     pass  # actual is not inside parent symlink target
             except (OSError, ValueError):
