@@ -30,7 +30,14 @@ done
 
 echo "Building xd.pyz..."
 
-python3 -c "
+# Get build information
+BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+BUILD_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+echo "  Build time: $BUILD_TIME"
+echo "  Build commit: $BUILD_COMMIT"
+
+python3 << EOF
 import zipapp
 import tempfile
 import shutil
@@ -49,6 +56,13 @@ with tempfile.TemporaryDirectory() as tmpdir:
         ignore=shutil.ignore_patterns('__pycache__', '*.pyc')
     )
 
+    # Create build info module (embedded in pyz)
+    build_info = f'''# Build information (auto-generated)
+XD_BUILD_TIME = "$BUILD_TIME"
+XD_BUILD_COMMIT = "$BUILD_COMMIT"
+'''
+    (p / 'build_info.py').write_text(build_info)
+
     # Create the zipapp
     zipapp.create_archive(
         p,
@@ -56,7 +70,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
         '/usr/bin/env python3',
         'xd:main'
     )
-"
+EOF
 
 # Make executable
 chmod +x xd.pyz

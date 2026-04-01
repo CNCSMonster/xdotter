@@ -31,9 +31,17 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION"
 
+      - name: Get build info
+        id: build_info
+        run: |
+          echo "commit=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "time=$(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_OUTPUT
+
       - name: Build xd.pyz
         env:
           XD_VERSION: ${{ steps.version.outputs.version }}
+          XD_BUILD_TIME: ${{ steps.build_info.outputs.time }}
+          XD_BUILD_COMMIT: ${{ steps.build_info.outputs.commit }}
         run: ./scripts/build-pyz.sh
 
       - name: Create Release
@@ -49,6 +57,12 @@ jobs:
             chmod +x ~/.local/bin/xd
             xd --help
             ```
+
+            ## Build Info
+
+            - **Version**: ${{ steps.version.outputs.version }}
+            - **Commit**: ${{ steps.build_info.outputs.commit }}
+            - **Built**: ${{ steps.build_info.outputs.time }}
 
             ## Changelog
 

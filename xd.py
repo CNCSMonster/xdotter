@@ -278,11 +278,11 @@ def get_version() -> str:
     env_version = os.environ.get("XD_VERSION")
     if env_version:
         return env_version.lstrip("v")
-    
+
     # 2. Try to get from git tag (only if running from source directory)
     try:
         import subprocess
-        
+
         # Determine the git directory (parent of the script or current dir)
         script_path = Path(__file__).parent
         # If running from .pyz, use current working directory instead
@@ -290,7 +290,7 @@ def get_version() -> str:
             git_dir = Path.cwd()
         else:
             git_dir = script_path
-        
+
         result = subprocess.run(
             ["git", "describe", "--tags", "--exact-match"],
             capture_output=True,
@@ -299,7 +299,7 @@ def get_version() -> str:
         )
         if result.returncode == 0:
             return result.stdout.strip().lstrip("v")
-        
+
         # Try git describe for dev versions
         result = subprocess.run(
             ["git", "describe", "--tags"],
@@ -311,12 +311,63 @@ def get_version() -> str:
             return result.stdout.strip().lstrip("v")
     except (FileNotFoundError, subprocess.SubprocessError):
         pass
-    
+
     # 3. Default version (for development or when git is not available)
-    return "0.2.1"
+    return "0.3.3"
+
+
+def get_build_info() -> Optional[Dict[str, str]]:
+    """
+    Get build information if available.
+    
+    Returns:
+        Dict with 'time' and/or 'commit' keys if available, None otherwise.
+    """
+    info = {}
+    
+    # 1. Try to import embedded build_info module (for .pyz installations)
+    try:
+        import build_info
+        if hasattr(build_info, 'XD_BUILD_TIME'):
+            info['time'] = build_info.XD_BUILD_TIME
+        if hasattr(build_info, 'XD_BUILD_COMMIT'):
+            info['commit'] = build_info.XD_BUILD_COMMIT
+    except ImportError:
+        pass
+    
+    # 2. Check environment variables (for direct Python execution)
+    if 'time' not in info:
+        env_time = os.environ.get("XD_BUILD_TIME")
+        if env_time:
+            info['time'] = env_time
+    
+    if 'commit' not in info:
+        env_commit = os.environ.get("XD_BUILD_COMMIT")
+        if env_commit:
+            info['commit'] = env_commit
+    
+    # 3. Try to get commit from git (for source installations)
+    if 'commit' not in info:
+        try:
+            import subprocess
+            script_path = Path(__file__).parent
+            if not str(script_path).endswith('.pyz') and script_path.is_dir():
+                result = subprocess.run(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    cwd=script_path
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    info['commit'] = result.stdout.strip()
+        except (FileNotFoundError, subprocess.SubprocessError):
+            pass
+    
+    return info if info else None
 
 
 VERSION = get_version()
+BUILD_INFO = get_build_info()
 
 
 # Sensitive paths and their required permissions
@@ -1329,8 +1380,15 @@ LICENSE:
 
 
 def print_version():
-    """Print version"""
+    """Print version and build information"""
     print(f"xdotter {VERSION}")
+    
+    # Print build info if available
+    if BUILD_INFO:
+        if BUILD_INFO.get('time'):
+            print(f"Built: {BUILD_INFO['time']}")
+        if BUILD_INFO.get('commit'):
+            print(f"Commit: {BUILD_INFO['commit']}")
 
 
 def main():
