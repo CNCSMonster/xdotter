@@ -1510,6 +1510,67 @@ def test_deploy_auto_validation_valid():
                 target_path.unlink()
 
 
+# ============================================================
+# Symlink Loop Detection Tests
+# ============================================================
+
+def test_symlink_loop_detection():
+    """Test symlink loop detection function"""
+    print("\n[Test: Symlink Loop Detection]")
+
+    from xd import would_create_symlink_loop
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Setup: dir_a -> real_c
+        real_c = tmppath / "real_c"
+        real_c.mkdir()
+        dir_a = tmppath / "dir_a"
+        os.symlink(real_c, dir_a)
+
+        # Test 1: Creating dir_a/sub -> real_c/sub would create loop
+        link_path = dir_a / "sub"
+        actual = real_c / "sub"
+        actual.mkdir()
+
+        if would_create_symlink_loop(link_path, actual):
+            log_test("Detects potential symlink loop", "PASS")
+        else:
+            log_test("Detects potential symlink loop", "FAIL", "Should detect loop")
+
+
+def test_deploy_symlink_loop_warning():
+    """Test deploy warns about symlink loop"""
+    print("\n[Test: Deploy Symlink Loop Warning]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Setup: dir_a -> real_c
+        real_c = tmppath / "real_c"
+        real_c.mkdir()
+        (real_c / "sub").mkdir()
+
+        dir_a = tmppath / "dir_a"
+        os.symlink(real_c, dir_a)
+
+        # Config that would create loop: dir_a/sub -> real_c/sub
+        config = tmppath / "xdotter.toml"
+        config.write_text(f'''
+[links]
+"dir_a/sub" = "real_c/sub"
+''')
+
+        code, stdout, stderr = run_xd(["deploy", "-v"], cwd=tmpdir)
+
+        # Should warn about loop
+        if "loop" in stdout.lower() or "loop" in stderr.lower() or code != 0:
+            log_test("Deploy warns about symlink loop", "PASS")
+        else:
+            log_test("Deploy warns about symlink loop", "FAIL", "Should warn about loop")
+
+
 def main():
     """Run all tests"""
     print("=" * 50)
@@ -1581,6 +1642,10 @@ def main():
     test_deploy_auto_validation_invalid()
     test_deploy_no_validate_flag()
     test_deploy_auto_validation_valid()
+
+    # Symlink loop detection tests
+    test_symlink_loop_detection()
+    test_deploy_symlink_loop_warning()
 
     # Summary
     success = print_summary()

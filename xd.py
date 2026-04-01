@@ -605,6 +605,119 @@ def log(args, level: str, msg: str):
         print(f"{COLOR_RED}[ERROR] {msg}{COLOR_RESET}", file=sys.stderr)
 
 
+def would_create_symlink_loop(link_path: Path, actual: Path) -> bool:
+    """
+    Check if creating a symlink at link_path pointing to actual would create a loop.
+
+    A loop would be created if:
+    1. link_path's parent is a symlink pointing near actual
+    2. link_path is inside a directory that is a symlink to actual's parent
+
+    Note: If link_path already exists as a symlink pointing to actual, this is NOT a loop.
+
+    Args:
+        link_path: The path where symlink will be created
+        actual: The target path the symlink will point to
+
+    Returns:
+        True if creating the symlink would create a loop, False otherwise
+    """
+    try:
+        # If link_path already exists as a symlink to actual, not a loop
+        if link_path.is_symlink():
+            try:
+                existing_target = Path(os.readlink(link_path)).resolve()
+                if existing_target == actual.resolve():
+                    return False  # Already points to correct target
+            except (OSError, ValueError):
+                pass
+
+        # Use absolute path for link_path (don't resolve, which would follow symlink)
+        link_absolute = link_path.absolute()
+        actual_resolved = actual.resolve()
+
+        # Additional check: walk up from link_path and check if any parent
+        # is a symlink that points to actual or contains actual
+        current = link_absolute.parent
+        while current != current.parent:
+            if current.is_symlink():
+                target = Path(os.readlink(current))
+                if not target.is_absolute():
+                    target = current.parent / target
+                try:
+                    target_resolved = target.resolve()
+                    # If this symlink points to actual or contains actual
+                    if target_resolved == actual_resolved:
+                        return True
+                    # Check if actual is inside target (Python 3.9+ compatible)
+                    try:
+                        actual_resolved.relative_to(target_resolved)
+                        return True
+                    except ValueError:
+                        pass
+                except (OSError, ValueError):
+                    pass
+            current = current.parent
+
+        return False
+
+    except (OSError, ValueError, RuntimeError):
+        # If we can't determine, assume no loop (conservative)
+        return False
+
+
+def paths_would_conflict(link_path: Path, actual: Path) -> bool:
+    """
+    Check if link_path and actual would conflict (e.g., one is inside the other).
+
+    This check only returns True if:
+    1. link_path is the same as actual
+    2. link_path is inside actual's directory tree
+
+    It does NOT return True for normal symlink scenarios where the symlink
+    and target are in completely different directories.
+
+    Note: If link_path already exists as a symlink, we don't resolve it
+    (to avoid following the symlink to the target).
+
+    Args:
+        link_path: The path where symlink will be created
+        actual: The target path the symlink will point to
+
+    Returns:
+        True if paths would conflict, False otherwise
+    """
+    try:
+        # Only check if link_path's parent exists
+        if not link_path.parent.exists():
+            return False
+
+        # Don't resolve link_path if it's a symlink (would follow the link)
+        # Use absolute() instead of resolve() to get absolute path without following links
+        if link_path.exists() and link_path.is_symlink():
+            link_absolute = link_path.absolute()
+        else:
+            link_absolute = link_path.absolute()
+        
+        actual_resolved = actual.resolve()
+
+        # Don't allow if they're the same (comparing absolute paths)
+        if link_absolute == actual_resolved:
+            return True
+
+        # Check if link_path is inside actual's directory tree
+        # This would be a problem: creating link inside target
+        try:
+            link_absolute.relative_to(actual_resolved)
+            return True  # link_path is inside actual
+        except ValueError:
+            pass
+
+        return False
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+
 def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[str]]:
     """Create a symlink from link to actual_path"""
     try:
@@ -616,6 +729,32 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
         # Expand home directory in link path
         home_dir = get_home_dir()
         link_path = Path(link.replace("~", str(home_dir))).expanduser()
+
+        # Check for path conflict (one inside the other)
+        if paths_would_conflict(link_path, actual):
+            log(args, "warning", f"Path conflict: {link_path} and {actual} would conflict!")
+            log(args, "warning", "Skipping this link to prevent issues")
+            return False, f"Path conflict detected"
+
+        # Check for symlink loop in specific scenario:
+        # If link_path's parent is a symlink pointing near actual
+        if would_create_symlink_loop(link_path, actual):
+            log(args, "warning", f"Creating symlink {link_path} -> {actual} would create a loop!")
+            log(args, "warning", "Skipping this link to prevent infinite loop")
+
+            # In interactive mode, ask if user wants to create real directory instead
+            if args.interactive:
+                print(f"Create real directory at {link_path} instead? [y/n] ", end="")
+                sys.stdout.flush()
+                response = input().strip().lower()
+                if response == "y":
+                    if args.dry_run:
+                        log(args, "debug", f"Would create directory {link_path}")
+                    else:
+                        log(args, "debug", f"Creating directory {link_path}")
+                        link_path.mkdir(parents=True, exist_ok=True)
+                    return True, None
+            return False, f"Symlink loop detected, skipped"
 
         # Check permissions BEFORE creating symlink (if enabled)
         # This prevents deploying files with wrong permissions to sensitive locations
