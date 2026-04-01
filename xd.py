@@ -660,9 +660,10 @@ def would_create_symlink_loop(link_path: Path, actual: Path) -> bool:
     """
     Check if creating a symlink at link_path pointing to actual would create a loop.
 
-    A loop would be created if:
-    1. link_path's parent is a symlink pointing near actual
-    2. link_path is inside a directory that is a symlink to actual's parent
+    A loop would be created ONLY if:
+    - link_path is INSIDE a directory that is a symlink pointing to a parent of actual
+
+    This is a very specific scenario and should not trigger for normal symlink usage.
 
     Note: If link_path already exists as a symlink pointing to actual, this is NOT a loop.
 
@@ -687,8 +688,14 @@ def would_create_symlink_loop(link_path: Path, actual: Path) -> bool:
         link_absolute = link_path.absolute()
         actual_resolved = actual.resolve()
 
-        # Additional check: walk up from link_path and check if any parent
-        # is a symlink that points to actual or contains actual
+        # Only check: is link_path inside a symlinked directory that points 
+        # to actual's parent directory tree?
+        # This is the ONLY scenario that creates a loop:
+        #   /home/user/dotfiles/config -> /home/user/.config (symlink)
+        #   Creating: /home/user/dotfiles/config/file -> /home/user/dotfiles/real/file
+        #   This becomes: /home/user/.config/file -> /home/user/dotfiles/real/file
+        #   If real/file is also under /home/user/.config, we have a loop
+        
         current = link_absolute.parent
         while current != current.parent:
             if current.is_symlink():
@@ -697,14 +704,15 @@ def would_create_symlink_loop(link_path: Path, actual: Path) -> bool:
                     target = current.parent / target
                 try:
                     target_resolved = target.resolve()
-                    # If this symlink points to actual or contains actual
-                    if target_resolved == actual_resolved:
-                        return True
-                    # Check if actual is inside target (Python 3.9+ compatible)
+                    # Check if actual is inside this symlink target
                     try:
                         actual_resolved.relative_to(target_resolved)
+                        # actual is inside the symlink target
+                        # AND link_path is inside the symlink source
+                        # This creates a potential loop
                         return True
                     except ValueError:
+                        # actual is NOT inside the symlink target, no loop
                         pass
                 except (OSError, ValueError):
                     pass
@@ -793,17 +801,30 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
             log(args, "warning", f"Creating symlink {link_path} -> {actual} would create a loop!")
             log(args, "warning", "Skipping this link to prevent infinite loop")
 
-            # In interactive mode, ask if user wants to create real directory instead
+            # In interactive mode, ask if user wants to copy the file/directory instead
             if args.interactive:
-                print(f"Create real directory at {link_path} instead? [y/n] ", end="")
+                if actual.is_dir():
+                    print(f"Copy directory {actual} to {link_path} instead? [y/n] ", end="")
+                else:
+                    print(f"Copy file {actual} to {link_path} instead? [y/n] ", end="")
                 sys.stdout.flush()
                 response = input().strip().lower()
                 if response == "y":
                     if args.dry_run:
-                        log(args, "debug", f"Would create directory {link_path}")
+                        log(args, "debug", f"Would copy {actual} to {link_path}")
                     else:
-                        log(args, "debug", f"Creating directory {link_path}")
-                        link_path.mkdir(parents=True, exist_ok=True)
+                        import shutil
+                        log(args, "debug", f"Copying {actual} to {link_path}")
+                        # Create parent directory if needed
+                        link_dir = link_path.parent
+                        if not link_dir.exists():
+                            link_dir.mkdir(parents=True, exist_ok=True)
+                        # Copy file or directory
+                        if actual.is_dir():
+                            shutil.copytree(actual, link_path, dirs_exist_ok=True)
+                        else:
+                            shutil.copy2(actual, link_path)
+                        log(args, "info", f"Copied {actual} to {link_path}")
                     return True, None
             return False, f"Symlink loop detected, skipped"
 
