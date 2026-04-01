@@ -656,7 +656,7 @@ def log(args, level: str, msg: str):
         print(f"{COLOR_RED}[ERROR] {msg}{COLOR_RESET}", file=sys.stderr)
 
 
-def would_create_symlink_loop(link_path: Path, actual: Path) -> bool:
+def would_create_symlink_loop(link_path: Path, actual: Path, args=None) -> bool:
     """
     Check if creating a symlink at link_path pointing to actual would create a loop.
 
@@ -670,6 +670,7 @@ def would_create_symlink_loop(link_path: Path, actual: Path) -> bool:
     Args:
         link_path: The path where symlink will be created
         actual: The target path the symlink will point to
+        args: Optional args for debug logging
 
     Returns:
         True if creating the symlink would create a loop, False otherwise
@@ -688,14 +689,12 @@ def would_create_symlink_loop(link_path: Path, actual: Path) -> bool:
         link_absolute = link_path.absolute()
         actual_resolved = actual.resolve()
 
+        # Debug logging
+        if args and args.verbose:
+            log(args, "debug", f"Loop check: {link_absolute} -> {actual_resolved}")
+
         # Only check: is link_path inside a symlinked directory that points 
         # to actual's parent directory tree?
-        # This is the ONLY scenario that creates a loop:
-        #   /home/user/dotfiles/config -> /home/user/.config (symlink)
-        #   Creating: /home/user/dotfiles/config/file -> /home/user/dotfiles/real/file
-        #   This becomes: /home/user/.config/file -> /home/user/dotfiles/real/file
-        #   If real/file is also under /home/user/.config, we have a loop
-        
         current = link_absolute.parent
         while current != current.parent:
             if current.is_symlink():
@@ -708,8 +707,8 @@ def would_create_symlink_loop(link_path: Path, actual: Path) -> bool:
                     try:
                         actual_resolved.relative_to(target_resolved)
                         # actual is inside the symlink target
-                        # AND link_path is inside the symlink source
-                        # This creates a potential loop
+                        if args and args.verbose:
+                            log(args, "debug", f"  Loop detected: {current} -> {target_resolved}")
                         return True
                     except ValueError:
                         # actual is NOT inside the symlink target, no loop
@@ -789,6 +788,43 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
         home_dir = get_home_dir()
         link_path = Path(link.replace("~", str(home_dir))).expanduser()
 
+        # Check if link already exists FIRST (before loop detection)
+        if link_path.exists() or link_path.is_symlink():
+            if link_path.is_symlink():
+                existing_target = os.readlink(link_path)
+                if Path(existing_target).resolve() == actual:
+                    log(args, "debug", "Symlink already exists, skipping")
+                    return True, None
+
+            # Handle existing file/link
+            # Warn if target exists but is not a symlink to this location
+            if not link_path.is_symlink():
+                log(args, "warning", f"Target exists but is not a symlink: {link_path}")
+
+            if args.interactive:
+                print(f"Link {link_path} exists, remove it? [y/n] ", end="")
+                sys.stdout.flush()
+                response = input().strip().lower()
+                should_remove = response == "y"
+            elif args.force:
+                should_remove = True
+            else:
+                return False, f"Path exists, use --force or --interactive to overwrite: {link_path}"
+
+            if should_remove:
+                if args.dry_run:
+                    log(args, "debug", f"Would remove {link_path}")
+                else:
+                    log(args, "debug", f"Removing {link_path}")
+                    if link_path.is_dir() and not link_path.is_symlink():
+                        import shutil
+                        shutil.rmtree(link_path)
+                    else:
+                        link_path.unlink()
+            else:
+                log(args, "debug", "Skipping existing link")
+                return True, None
+
         # Check for path conflict (one inside the other)
         if paths_would_conflict(link_path, actual):
             log(args, "warning", f"Path conflict: {link_path} and {actual} would conflict!")
@@ -797,7 +833,7 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
 
         # Check for symlink loop in specific scenario:
         # If link_path's parent is a symlink pointing near actual
-        if would_create_symlink_loop(link_path, actual):
+        if would_create_symlink_loop(link_path, actual, args):
             log(args, "warning", f"Creating symlink {link_path} -> {actual} would create a loop!")
             log(args, "warning", "Skipping this link to prevent infinite loop")
 
@@ -843,43 +879,6 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
             else:
                 log(args, "debug", f"Creating directory {link_dir}")
                 link_dir.mkdir(parents=True, exist_ok=True)
-
-        # Check if link already exists
-        if link_path.exists() or link_path.is_symlink():
-            if link_path.is_symlink():
-                existing_target = os.readlink(link_path)
-                if Path(existing_target).resolve() == actual:
-                    log(args, "debug", "Symlink already exists, skipping")
-                    return True, None
-
-            # Handle existing file/link
-            # Warn if target exists but is not a symlink to this location
-            if not link_path.is_symlink():
-                log(args, "warning", f"Target exists but is not a symlink: {link_path}")
-
-            if args.interactive:
-                print(f"Link {link_path} exists, remove it? [y/n] ", end="")
-                sys.stdout.flush()
-                response = input().strip().lower()
-                should_remove = response == "y"
-            elif args.force:
-                should_remove = True
-            else:
-                return False, f"Path exists, use --force or --interactive to overwrite: {link_path}"
-
-            if should_remove:
-                if args.dry_run:
-                    log(args, "debug", f"Would remove {link_path}")
-                else:
-                    log(args, "debug", f"Removing {link_path}")
-                    if link_path.is_dir() and not link_path.is_symlink():
-                        import shutil
-                        shutil.rmtree(link_path)
-                    else:
-                        link_path.unlink()
-            else:
-                log(args, "debug", "Skipping existing link")
-                return True, None
 
         # Create the symlink
         if args.dry_run:
