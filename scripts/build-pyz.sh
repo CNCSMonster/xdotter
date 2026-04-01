@@ -31,7 +31,7 @@ done
 echo "Building xd.pyz..."
 
 # Get build information
-BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+BUILD_TIME=$(date +"%Y-%m-%d %H:%M:%S %Z")
 BUILD_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 echo "  Build time: $BUILD_TIME"

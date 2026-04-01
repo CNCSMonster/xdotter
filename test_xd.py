@@ -1571,6 +1571,59 @@ def test_deploy_symlink_loop_warning():
             log_test("Deploy warns about symlink loop", "FAIL", "Should warn about loop")
 
 
+def test_circular_symlink_scenario():
+    """Test circular symlink scenario detection function"""
+    print("\n[Test: Circular Symlink Scenario]")
+
+    from xd import detect_circular_symlink_scenario
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Test the detection function directly
+        # Scenario: C -> A, creating A/B -> C/B
+        
+        # Create A (real directory)
+        A = tmppath / "A"
+        A.mkdir()
+        
+        # Create C as symlink to A
+        C = tmppath / "C"
+        os.symlink(A, C)
+        
+        # We want to create symlink at A/B pointing to C/B
+        # A/B -> C/B, but C -> A, so A/B -> C/B -> A/B (circular!)
+        link_path = A / "B"  # Where symlink will be created
+        actual = C / "B"  # What symlink points to
+        
+        result = detect_circular_symlink_scenario(link_path, actual)
+        
+        if result:
+            log_test("Detects circular scenario", "PASS")
+        else:
+            log_test("Detects circular scenario", "FAIL", "Should detect circular")
+
+        # Test 2: Verify detection works when C is parent of actual
+        # Reset: recreate C as symlink
+        if C.exists():
+            if C.is_dir() and not C.is_symlink():
+                shutil.rmtree(C)
+            else:
+                C.unlink()
+        os.symlink(A, C)
+        
+        # Test: A/file -> C/file, where C -> A
+        link_path2 = A / "file"
+        actual2 = C / "file"
+        
+        result2 = detect_circular_symlink_scenario(link_path2, actual2)
+        
+        if result2:
+            log_test("Detects circular scenario (direct parent)", "PASS")
+        else:
+            log_test("Detects circular scenario (direct parent)", "FAIL", "Should detect circular")
+
+
 def main():
     """Run all tests"""
     print("=" * 50)
@@ -1646,6 +1699,9 @@ def main():
     # Symlink loop detection tests
     test_symlink_loop_detection()
     test_deploy_symlink_loop_warning()
+
+    # Circular symlink scenario test
+    test_circular_symlink_scenario()
 
     # Summary
     success = print_summary()

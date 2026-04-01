@@ -656,6 +656,56 @@ def log(args, level: str, msg: str):
         print(f"{COLOR_RED}[ERROR] {msg}{COLOR_RESET}", file=sys.stderr)
 
 
+def detect_circular_symlink_scenario(link_path: Path, actual: Path, args=None) -> Optional[Tuple[Path, Path]]:
+    """
+    Detect the circular symlink scenario:
+    Creating symlink at A/B pointing to C/B, when C is already a symlink to A.
+
+    Scenario:
+        C -> A  (C is a symlink to A)
+        Creating: A/B -> C/B
+        This becomes: A/B -> C/B -> A/B (circular!)
+
+    Args:
+        link_path: The path where symlink will be created (A/B)
+        actual: The target path the symlink will point to (C/B)
+        args: Optional args for debug logging
+
+    Returns:
+        Tuple of (problematic_symlink_C, target_A) if detected, None otherwise
+    """
+    try:
+        # We're creating: link_path (A/B) -> actual (C/B)
+        # Check if actual's parent (C) is a symlink to link's parent (A)
+        link_absolute = link_path.absolute()
+        
+        # Use actual.parent (not actual.resolve().parent) to get C, not A
+        # actual = C/B, actual.parent = C (even if C is a symlink)
+        actual_parent = actual.parent  # C
+        link_parent = link_absolute.parent  # A
+
+        # Check if actual_parent (C) is a symlink
+        if actual_parent.is_symlink():
+            try:
+                parent_target = Path(os.readlink(actual_parent))
+                if not parent_target.is_absolute():
+                    parent_target = actual_parent.parent / parent_target
+                parent_target_resolved = parent_target.resolve()
+
+                # Check if link_parent (A) equals the symlink target
+                if parent_target_resolved == link_parent:
+                    if args and args.verbose:
+                        log(args, "debug", f"Circular scenario detected: {actual_parent} -> {parent_target_resolved}")
+                        log(args, "debug", f"Creating {link_path} -> {actual} would be circular")
+                    return (actual_parent, link_parent)  # Return (C, A)
+            except (OSError, ValueError):
+                pass
+
+        return None
+    except (OSError, ValueError, RuntimeError):
+        return None
+
+
 def would_create_symlink_loop(link_path: Path, actual: Path, args=None) -> bool:
     """
     Check if creating a symlink at link_path pointing to actual would create a loop.
@@ -828,6 +878,7 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
 
         # Check if parent directory is a symlink
         # If so, creating a file symlink would overwrite the actual file!
+        # But we can fix this by removing the parent symlink and creating a real directory
         link_parent = link_path.parent
         if link_parent.is_symlink() and not actual.is_dir():
             try:
@@ -835,18 +886,45 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
                 if not parent_target.is_absolute():
                     parent_target = link_parent.parent / parent_target
                 parent_target_resolved = parent_target.resolve()
-                
+
                 # Check if actual is inside the parent symlink's target
                 try:
                     actual.relative_to(parent_target_resolved)
-                    # WARNING: Creating symlink here would overwrite the actual file!
-                    log(args, "warning", f"Parent directory {link_parent} is a symlink to {parent_target_resolved}")
-                    log(args, "warning", f"Creating symlink at {link_path} would OVERWRITE the actual file at {actual}")
-                    log(args, "warning", "This is likely a configuration error - you already have a directory symlink")
-                    log(args, "warning", "Remove this file entry from xdotter.toml (use directory symlink instead)")
-                    return False, f"Would overwrite actual file (parent is symlink)"
+                    # This means: link_parent -> parent_target, and actual is inside parent_target
+                    # Creating link_path (inside link_parent) -> actual would overwrite the source file!
+                    
+                    # Offer to fix in interactive mode
+                    should_fix = False
+                    if args.interactive:
+                        log(args, "warning", f"Parent directory {link_parent} is a symlink to {parent_target_resolved}")
+                        log(args, "warning", f"Creating symlink at {link_path} would overwrite the actual file at {actual}")
+                        print(f"Remove {link_parent} and create real directory? [y/n] ", end="")
+                        sys.stdout.flush()
+                        response = input().strip().lower()
+                        should_fix = response == "y"
+                    elif args.dry_run:
+                        log(args, "info", f"Would remove symlink {link_parent}")
+                        log(args, "info", f"Would create real directory {link_parent}")
+                        should_fix = True  # In dry-run, just show what would happen
+                    else:
+                        log(args, "warning", f"Parent directory {link_parent} is a symlink to {parent_target_resolved}")
+                        log(args, "warning", f"Creating symlink at {link_path} would OVERWRITE the actual file at {actual}")
+                        log(args, "warning", "Use -i to automatically fix this issue")
+                        return False, f"Would overwrite actual file (parent is symlink)"
+
+                    if should_fix:
+                        # Remove the parent symlink and create real directory
+                        if not args.dry_run:
+                            log(args, "info", f"Removing symlink {link_parent}")
+                            link_parent.unlink()
+                            log(args, "info", f"Creating real directory {link_parent}")
+                            link_parent.mkdir(parents=True, exist_ok=True)
+                        # Continue with normal symlink creation
+                    else:
+                        if not args.dry_run:
+                            return False, f"Would overwrite actual file (parent is symlink)"
                 except ValueError:
-                    pass  # actual is not inside parent symlink target
+                    pass  # actual is not inside parent symlink target, normal flow
             except (OSError, ValueError):
                 pass  # Can't determine, proceed with normal flow
 
@@ -911,8 +989,58 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
                         log(args, "debug", f"Creating directory {link_path}")
                         link_path.mkdir(parents=True, exist_ok=True)
                     return True, None
-            
+
             return False, f"Symlink loop detected, skipped"
+
+        # Check for circular symlink scenario:
+        # Creating symlink at A/B pointing to C/B, when C is already a symlink to A
+        # This would create: A/B -> C/B -> A/B (circular!)
+        circular_result = detect_circular_symlink_scenario(link_path, actual, args)
+        if circular_result:
+            circular_symlink, link_parent = circular_result
+            log(args, "warning", f"Circular symlink scenario detected!")
+            log(args, "warning", f"Creating {link_path} -> {actual} when {circular_symlink} -> {link_parent}")
+            log(args, "warning", "This would create a circular reference")
+
+            # Handle the circular scenario
+            should_fix = False
+
+            # Only ask in interactive mode
+            if args.interactive:
+                print(f"Remove {circular_symlink} and create real directory? [y/n] ", end="")
+                sys.stdout.flush()
+                response = input().strip().lower()
+                should_fix = response == "y"
+            else:
+                # Non-interactive: skip by default
+                log(args, "warning", "Skipping this link to prevent circular reference (use -i to fix interactively)")
+                return False, f"Circular symlink scenario detected, skipped"
+
+            if should_fix:
+                # Remove the problematic symlink C
+                if args.dry_run:
+                    log(args, "info", f"Would remove symlink {circular_symlink}")
+                    log(args, "info", f"Would create real directory {circular_symlink}")
+                else:
+                    log(args, "info", f"Removing symlink {circular_symlink}")
+                    try:
+                        circular_symlink.unlink()
+                    except OSError as e:
+                        log(args, "error", f"Failed to remove {circular_symlink}: {e}")
+                        return False, f"Failed to remove circular symlink"
+
+                    log(args, "info", f"Creating real directory {circular_symlink}")
+                    try:
+                        circular_symlink.mkdir(parents=True, exist_ok=True)
+                    except OSError as e:
+                        log(args, "error", f"Failed to create directory {circular_symlink}: {e}")
+                        return False, f"Failed to create directory"
+
+                # After fixing, the symlink creation can proceed normally
+                log(args, "info", f"Circular scenario fixed, proceeding with symlink creation")
+            else:
+                log(args, "warning", "Skipping this link to prevent circular reference")
+                return False, f"Circular symlink scenario detected, skipped"
 
         # Check permissions BEFORE creating symlink (if enabled)
         # This prevents deploying files with wrong permissions to sensitive locations
