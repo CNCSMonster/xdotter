@@ -1582,22 +1582,22 @@ def test_circular_symlink_scenario():
 
         # Test the detection function directly
         # Scenario: C -> A, creating A/B -> C/B
-        
+
         # Create A (real directory)
         A = tmppath / "A"
         A.mkdir()
-        
+
         # Create C as symlink to A
         C = tmppath / "C"
         os.symlink(A, C)
-        
+
         # We want to create symlink at A/B pointing to C/B
         # A/B -> C/B, but C -> A, so A/B -> C/B -> A/B (circular!)
         link_path = A / "B"  # Where symlink will be created
         actual = C / "B"  # What symlink points to
-        
+
         result = detect_circular_symlink_scenario(link_path, actual)
-        
+
         if result:
             log_test("Detects circular scenario", "PASS")
         else:
@@ -1611,17 +1611,74 @@ def test_circular_symlink_scenario():
             else:
                 C.unlink()
         os.symlink(A, C)
-        
+
         # Test: A/file -> C/file, where C -> A
         link_path2 = A / "file"
         actual2 = C / "file"
-        
+
         result2 = detect_circular_symlink_scenario(link_path2, actual2)
-        
+
         if result2:
             log_test("Detects circular scenario (direct parent)", "PASS")
         else:
             log_test("Detects circular scenario (direct parent)", "FAIL", "Should detect circular")
+
+
+def test_force_fixes_parent_symlink():
+    """Test that --force automatically fixes parent directory symlink issue"""
+    print("\n[Test: Force Fixes Parent Symlink]")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Setup: create source file and parent symlink scenario
+        # dotfiles/helix/config.toml (source)
+        # .config/helix -> ../dotfiles/helix (parent symlink)
+        # Want to create: .config/helix/config.toml -> dotfiles/helix/config.toml
+
+        dotfiles = tmppath / "dotfiles" / "helix"
+        dotfiles.mkdir(parents=True)
+        source_file = dotfiles / "config.toml"
+        source_file.write_text("source content")
+
+        config_dir = tmppath / ".config"
+        config_dir.mkdir()
+        parent_symlink = config_dir / "helix"
+        os.symlink("../dotfiles/helix", parent_symlink)
+
+        # Config file
+        config = tmppath / "xdotter.toml"
+        config.write_text(f'''
+[links]
+"{dotfiles}/config.toml" = "{config_dir}/helix/config.toml"
+''')
+
+        # Run with --force
+        code, stdout, stderr = run_xd(
+            ["deploy", "-f", "-v"],
+            cwd=tmpdir,
+            env={"HOME": str(tmppath)}
+        )
+
+        # Check: parent symlink should be replaced with real directory
+        if parent_symlink.is_dir() and not parent_symlink.is_symlink():
+            log_test("Parent symlink replaced with real directory", "PASS")
+        else:
+            log_test("Parent symlink replaced with real directory", "FAIL",
+                     f"Still a symlink or missing: {parent_symlink}")
+
+        # Check: symlink created correctly
+        created_link = config_dir / "helix" / "config.toml"
+        if created_link.is_symlink():
+            target = Path(os.readlink(created_link)).resolve()
+            if target == source_file.resolve():
+                log_test("Symlink created with correct target", "PASS")
+            else:
+                log_test("Symlink created with correct target", "FAIL",
+                         f"Points to {target}, expected {source_file}")
+        else:
+            log_test("Symlink created with correct target", "FAIL",
+                     "Symlink was not created")
 
 
 def main():
@@ -1702,6 +1759,9 @@ def main():
 
     # Circular symlink scenario test
     test_circular_symlink_scenario()
+
+    # Parent symlink auto-fix test
+    test_force_fixes_parent_symlink()
 
     # Summary
     success = print_summary()

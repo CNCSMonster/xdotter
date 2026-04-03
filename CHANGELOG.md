@@ -35,16 +35,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **TOML error suggestions** - Common TOML errors include fix suggestions:
   - Unclosed strings, missing `=`, invalid keys, etc.
   - Chinese language hints for common issues
-  
+
 - **JSON error suggestions** - Common JSON errors include fix suggestions:
   - Missing commas, invalid escapes, unterminated strings, etc.
   - Chinese language hints for common issues
 
 ### Changed
+- **`--force` flag now auto-fixes parent directory symlink issues** - When the target's parent directory is a symlink, `--force` will automatically remove the parent symlink and create a real directory
+  - Previously required `-i` (interactive mode) to fix this scenario
+  - Now `--force` handles it automatically, consistent with the "force" semantics
+  - Without `--force` or `-i`, deployment is skipped with a warning
+
 - **Removed `-c`/`--config` parameter** - Configuration file is now fixed to `xdotter.toml` in the current directory
   - This simplifies the CLI and aligns with the "simple by default" philosophy
   - If you need different configurations, use different directories or rename the config file
-  
+
 - **New `check-permissions` command** - Check and fix permissions for already deployed files
   - `xd check-permissions` - Check permissions for all deployed symlinks
   - `xd check-permissions --fix-permissions` - Check and automatically fix permissions

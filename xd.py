@@ -893,7 +893,7 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
                     # This means: link_parent -> parent_target, and actual is inside parent_target
                     # Creating link_path (inside link_parent) -> actual would overwrite the source file!
                     
-                    # Offer to fix in interactive mode
+                    # Offer to fix in interactive mode, or auto-fix with --force
                     should_fix = False
                     if args.interactive:
                         log(args, "warning", f"Parent directory {link_parent} is a symlink to {parent_target_resolved}")
@@ -906,10 +906,17 @@ def create_symlink(actual_path: str, link: str, args) -> Tuple[bool, Optional[st
                         log(args, "info", f"Would remove symlink {link_parent}")
                         log(args, "info", f"Would create real directory {link_parent}")
                         should_fix = True  # In dry-run, just show what would happen
+                    elif args.force:
+                        # --force: auto-fix by removing parent symlink
+                        log(args, "info", f"Removing parent symlink {link_parent}")
+                        link_parent.unlink()
+                        log(args, "info", f"Creating real directory {link_parent}")
+                        link_parent.mkdir(parents=True, exist_ok=True)
+                        should_fix = True
                     else:
                         log(args, "warning", f"Parent directory {link_parent} is a symlink to {parent_target_resolved}")
                         log(args, "warning", f"Creating symlink at {link_path} would OVERWRITE the actual file at {actual}")
-                        log(args, "warning", "Use -i to automatically fix this issue")
+                        log(args, "warning", "Use -i to interactively fix or --force to auto-fix")
                         return False, f"Would overwrite actual file (parent is symlink)"
 
                     if should_fix:
