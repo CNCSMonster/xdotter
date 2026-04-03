@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.3.4] - 2026-04-03
+
+### Fixed
+- **`--force` flag now auto-fixes parent directory symlink issues** - When the target's parent directory is a symlink, `--force` will automatically remove the parent symlink and create a real directory
+  - Previously required `-i` (interactive mode) to fix this scenario
+  - Now `--force` handles it automatically, consistent with the "force" semantics
+  - Without `--force` or `-i`, deployment is skipped with a warning
+
 ### Added
 - **Automatic shell completion via argcomplete** - Shell completion now auto-generated from argparse
   - Vendored argcomplete 3.6.3 (~42KB, no runtime dependencies)
