@@ -55,8 +55,11 @@ pub enum Command {
     },
     /// Create a new xdotter.toml template
     New,
-    /// Print help message
-    Help,
+    /// Generate shell completion scripts
+    Completion {
+        /// Shell to generate completion for
+        shell: String,
+    },
     /// Print version
     Version,
 }

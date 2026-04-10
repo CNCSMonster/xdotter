@@ -3,7 +3,8 @@ mod config;
 
 use clap::Parser;
 use clap::CommandFactory;
-use cli::{Cli, Command, Shell};
+use clap_complete::{generate, Shell as ClapShell};
+use cli::{Cli, Command};
 use config::{Config, detect_format, validate_toml, validate_json};
 use std::fs;
 use std::io;
@@ -19,7 +20,7 @@ fn main() {
         Command::CheckPermissions => cmd_check_permissions(&cli),
         Command::Validate { files } => cmd_validate(&cli, &files.iter().map(|p| p.to_path_buf()).collect::<Vec<_>>()),
         Command::New => cmd_new(&cli),
-        Command::Help => cmd_help(&cli),
+        Command::Completion { shell } => cmd_completion(&cli, shell),
         Command::Version => cmd_version(&cli),
     };
     
@@ -46,7 +47,7 @@ fn log(cli: &Cli, level: &str, msg: &str) {
     }
 }
 
-fn cmd_help(cli: &Cli) -> Result<(), String> {
+fn cmd_help(_cli: &Cli) -> Result<(), String> {
     let mut cmd = Cli::command();
     let _ = cmd.print_help().map_err(|e| e.to_string())?;
     println!();
@@ -55,6 +56,19 @@ fn cmd_help(cli: &Cli) -> Result<(), String> {
 
 fn cmd_version(cli: &Cli) -> Result<(), String> {
     log(cli, "info", "0.4.0");
+    Ok(())
+}
+
+fn cmd_completion(_cli: &Cli, shell: &str) -> Result<(), String> {
+    let mut cmd = Cli::command();
+    let clap_shell = match shell.to_lowercase().as_str() {
+        "bash" => ClapShell::Bash,
+        "zsh" => ClapShell::Zsh,
+        "fish" => ClapShell::Fish,
+        _ => return Err(format!("Unsupported shell: {}", shell)),
+    };
+    
+    generate(clap_shell, &mut cmd, "xd", &mut io::stdout());
     Ok(())
 }
 
@@ -122,8 +136,8 @@ fn cmd_deploy(cli: &Cli) -> Result<(), String> {
     
     let mut success = true;
     
-    for (link, actual_path) in &config.links {
-        log(cli, "info", &format!("deploy: {} -> {}", link, actual_path));
+    for (actual_path, link) in &config.links {
+        log(cli, "info", &format!("deploy: {} -> {}", actual_path, link));
         if let Err(e) = create_symlink(actual_path, link, cli) {
             log(cli, "error", &format!("failed to create link: {}", e));
             success = false;
@@ -257,10 +271,8 @@ fn validate_config(filepath: &Path) -> Result<(), String> {
 }
 
 fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), String> {
-    let actual = expand_path(actual_path);
-    if !actual.exists() {
-        return Err(format!("Source path does not exist: {}", actual.display()));
-    }
+    let actual = expand_path(actual_path).canonicalize()
+        .map_err(|e| format!("Source path does not exist: {}: {}", actual_path, e))?;
     
     let link_path = expand_path(link);
     
@@ -339,13 +351,15 @@ fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), String
     if cli.dry_run {
         log(cli, "info", &format!("Would create symlink: {} -> {}", link_path.display(), actual.display()));
     } else {
-        if actual.is_dir() {
-            unix_fs::symlink(&actual, &link_path)
-                .map_err(|e| format!("Failed to create symlink: {}", e))?;
-        } else {
-            unix_fs::symlink(&actual, &link_path)
-                .map_err(|e| format!("Failed to create symlink: {}", e))?;
+        // Create parent directories if needed
+        if let Some(parent) = link_path.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent).map_err(|e| format!("Failed to create parent directory: {}", e))?;
+            }
         }
+        
+        unix_fs::symlink(&actual, &link_path)
+            .map_err(|e| format!("Failed to create symlink: {}", e))?;
         log(cli, "debug", &format!("Created symlink: {} -> {}", link_path.display(), actual.display()));
     }
     
@@ -354,9 +368,12 @@ fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), String
 
 fn expand_path(path: &str) -> PathBuf {
     if let Some(stripped) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
+        let home = std::env::var("HOME")
+            .ok()
+            .map(PathBuf::from)
+            .or_else(dirs::home_dir)
+            .unwrap_or_default();
+        return home.join(stripped);
     }
     PathBuf::from(path)
 }
