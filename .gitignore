@@ -63,3 +63,8 @@ _vendor/tomli/__pycache__/
 _vendor/argcomplete/__pycache__/
 __pycache__/
 
+
+
+# Added by cargo
+
+/target
