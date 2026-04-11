@@ -1,4 +1,6 @@
-use crate::{expand_path, log, Cli};
+use crate::commands::log;
+use crate::expand_path;
+use crate::Cli;
 use std::fs;
 use std::io;
 use std::os::unix::fs as unix_fs;
