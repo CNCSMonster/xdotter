@@ -60,7 +60,7 @@ fn log(cli: &Cli, level: &str, msg: &str) {
 }
 
 fn cmd_version(_cli: &Cli) -> Result<(), String> {
-    println!("{}", VERSION);
+    println!("xdotter {}", VERSION);
     Ok(())
 }
 
@@ -133,7 +133,7 @@ fn cmd_validate(cli: &Cli, files: &[PathBuf]) -> Result<(), String> {
                     eprintln!("{}", e);
                     return Err("Validation failed".to_string());
                 }
-                log(cli, "info", &format!("✓ {} is valid", f));
+                log(cli, "info", &format!("✓ {} is Valid", f));
                 found = true;
             }
         }
@@ -141,16 +141,22 @@ fn cmd_validate(cli: &Cli, files: &[PathBuf]) -> Result<(), String> {
             return Err("No default config file found (xdotter.toml or xdotter.json)".to_string());
         }
     } else {
+        let mut all_valid = true;
         for filepath in files {
             if !filepath.exists() {
                 log(cli, "error", &format!("File not found: {}", filepath.display()));
-                return Err("Validation failed".to_string());
+                all_valid = false;
+                continue;
             }
             if let Err(e) = validate_config_file(filepath) {
-                eprintln!("{}", e);
-                return Err("Validation failed".to_string());
+                eprintln!("{}: {}", filepath.display(), e);
+                all_valid = false;
+            } else {
+                log(cli, "info", &format!("✓ {} is Valid", filepath.display()));
             }
-            log(cli, "info", &format!("✓ {} is valid", filepath.display()));
+        }
+        if !all_valid {
+            return Err("Validation failed".to_string());
         }
     }
     

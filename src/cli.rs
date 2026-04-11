@@ -8,35 +8,35 @@ pub struct Cli {
     pub command: Option<Command>,
 
     /// Show more information
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     pub verbose: bool,
 
     /// Do not print any output
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     pub quiet: bool,
 
     /// Show what would be done without making changes
-    #[arg(short = 'n', long)]
+    #[arg(short = 'n', long, global = true)]
     pub dry_run: bool,
 
     /// Ask for confirmation when unsure
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     pub interactive: bool,
 
     /// Force overwrite existing files
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     pub force: bool,
 
     /// Check permissions for sensitive files
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub check_permissions: bool,
 
     /// Fix permissions for sensitive files
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub fix_permissions: bool,
 
     /// Skip config syntax validation during deploy
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub no_validate: bool,
 }
 

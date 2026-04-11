@@ -58,7 +58,7 @@ rm -rf "$tmpdir"
 # Test: Version Command
 tmpdir=$(setup_tmp)
 output=$(run_xd "$tmpdir" version)
-if echo "$output" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+"; then
+if echo "$output" | grep -qE "[0-9]+\.[0-9]+\.[0-9]+"; then
     log_test "Version Command" "PASS"
 else
     log_test "Version Command" "FAIL" "output: $output"
