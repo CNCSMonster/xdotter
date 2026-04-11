@@ -193,6 +193,37 @@ fn cmd_deploy(cli: &Cli) -> Result<(), String> {
         if let Err(e) = symlink::create_symlink(actual_path, link, cli) {
             log(cli, "error", &format!("failed to create link: {}", e));
             success = false;
+            continue;
+        }
+
+        // Permission check/fix after successful symlink creation
+        let link_path = expand_path(link);
+        if link_path.is_symlink() {
+            if let Ok(resolved) = link_path.canonicalize() {
+                if let Some((required_mode, description)) = get_required_permission(&link_path) {
+                    let is_correct = check_permission(&resolved, required_mode);
+                    if !is_correct {
+                        if cli.fix_permissions {
+                            if cli.dry_run {
+                                log(cli, "info", &format!("Would fix permission for {} to {:03o}",
+                                    link_path.display(), required_mode));
+                            } else {
+                                if fix_permission(&resolved, required_mode) {
+                                    log(cli, "info", &format!("Fixed permission for {} to {:03o}",
+                                        link_path.display(), required_mode));
+                                } else {
+                                    log(cli, "error", &format!("Failed to fix permission for {}",
+                                        link_path.display()));
+                                    success = false;
+                                }
+                            }
+                        } else if cli.check_permissions {
+                            log(cli, "warning", &format!("{}: {} has wrong permission (expected {:03o})",
+                                description, link_path.display(), required_mode));
+                        }
+                    }
+                }
+            }
         }
     }
     
