@@ -2,24 +2,22 @@
 
 ## 当前状态 (2026-04-11)
 
-### 测试通过率: **48/48 通过 (1 SKIP)** ✅
+### 测试总览: **87 个测试全部通过** ✅
 
-| 类别 | 测试数 | 通过 | 失败 | 跳过 |
-|------|--------|------|------|------|
-| 基础命令 | 3 | 3 | 0 | 0 |
-| 配置解析 | 1 | 1 | 0 | 0 |
-| Deploy 核心 | 5 | 5 | 0 | 0 |
-| Undeploy | 2 | 2 | 0 | 0 |
-| 标志位 | 3 | 3 | 0 | 0 |
-| 交互式模式 | 2 | 2 | 0 | 0 |
-| 错误处理 | 6 | 6 | 0 | 0 |
-| 配置格式 | 3 | 3 | 0 | 0 |
-| 权限检查 | 3 | 2 | 0 | 1 |
-| Validate 命令 | 4 | 4 | 0 | 0 |
-| Completion 命令 | 5 | 5 | 0 | 0 |
-| Deploy 自动验证 | 3 | 3 | 0 | 0 |
-| Symlink 安全 | 3 | 3 | 0 | 0 |
-| 其他 | 3 | 3 | 0 | 0 |
+| 层级 | 测试数 | 状态 | 运行方式 |
+|------|--------|------|----------|
+| **单元测试** | 39 | ✅ 全部通过 | `cargo test` |
+| **E2E 测试** | 48 | ✅ 全部通过 (1 SKIP) | `bash scripts/test-rust.sh` |
+| **总计** | **87** | **✅ 全部通过** | — |
+
+### 单元测试分布
+
+| 模块 | 测试数 | 覆盖内容 |
+|------|--------|---------|
+| `config.rs` | 10 | TOML/JSON 解析、空配置、格式检测 |
+| `permissions.rs` | 15 | 权限匹配、SSH/GPG 路径识别、glob 匹配 |
+| `symlink.rs` | 8 | 路径冲突、循环检测、环形引用检测 |
+| `main.rs` | 6 | `expand_path` (~ 展开、绝对/相对路径、Unicode) |
 
 ---
 
@@ -163,28 +161,6 @@
 | Deploy 自动验证 | 3 | auto-validation invalid, no-validate flag, auto-validation valid |
 | Symlink 安全 | 3 | loop detection, circular scenario, parent symlink fix |
 | 其他 | 5 | dependencies subdir, content verification, empty links, new no-overwrite |
-
-### 关键修复
-
-**问题: HOME 变量传播 + CWD**
-```bash
-# 修复前 (失败):
-run_xd() {
-    (export HOME="$1"; shift; "$RUST_BIN" "$@" 2>&1)  # CWD 不对
-}
-
-# 修复后 (通过):
-run_xd() {
-    local home_dir="$1"
-    shift
-    (cd "$home_dir" && HOME="$home_dir" "$RUST_BIN" "$@" 2>&1)
-}
-```
-
-**Symlink Loop Detection 行为差异**
-- Python 版本有一个误报 (false positive) 检测循环
-- Rust 版本正确识别该场景不是循环，允许创建 symlink
-- 测试已更新以反映正确行为
 
 ---
 
@@ -431,7 +407,6 @@ jobs:
 ### 📋 剩余工作
 | 任务 | 说明 | 优先级 |
 |------|------|--------|
-| 单元测试补充 | 为 `symlink.rs`、`expand_path` 添加 `#[cfg(test)]` 测试 | 中 |
 | Permission fix 集成 | `--fix-permissions` 作为 deploy 的 flag 而非独立命令 | 低 |
-| 跨平台验证 | macOS 编译测试 | 中 |
+| 跨平台验证 | macOS 上编译测试 (CI 已配置，仅 release tag 触发) | 中 |
 | assert_cmd 集成 | 用 Rust 原生测试框架替代 shell 脚本 | 低 |
