@@ -165,4 +165,43 @@ mod tests {
         assert_eq!(detect_format(Path::new("config.json")), Some("json"));
         assert_eq!(detect_format(Path::new("config.yaml")), None);
     }
+
+    #[test]
+    fn test_parse_empty_toml() {
+        let content = "";
+        let config = Config::from_toml(content).unwrap();
+        assert!(config.links.is_empty());
+        assert!(config.dependencies.is_empty());
+    }
+
+    #[test]
+    fn test_parse_empty_json() {
+        let content = "{}";
+        let config = Config::from_json(content).unwrap();
+        assert!(config.links.is_empty());
+        assert!(config.dependencies.is_empty());
+    }
+
+    #[test]
+    fn test_parse_links_only_toml() {
+        let content = r#"
+[links]
+".zshrc" = "~/.zshrc"
+"#;
+        let config = Config::from_toml(content).unwrap();
+        assert_eq!(config.links.len(), 1);
+        assert!(config.dependencies.is_empty());
+    }
+
+    #[test]
+    fn test_validate_empty_toml() {
+        let content = "";
+        assert!(validate_toml(content).is_ok());
+    }
+
+    #[test]
+    fn test_validate_empty_json() {
+        let content = "{}";
+        assert!(validate_json(content).is_ok());
+    }
 }

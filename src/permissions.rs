@@ -133,4 +133,117 @@ mod tests {
         assert!(glob_match("test", "test"));
         assert!(!glob_match("test", "testing"));
     }
+
+    #[test]
+    fn test_get_required_permission_ssh_rsa() {
+        std::env::set_var("HOME", "/home/user");
+        let path = Path::new("/home/user/.ssh/id_rsa");
+        let result = get_required_permission(path);
+        assert!(result.is_some());
+        let (mode, desc) = result.unwrap();
+        assert_eq!(mode, 0o600);
+        assert_eq!(desc, "SSH RSA private key");
+    }
+
+    #[test]
+    fn test_get_required_permission_ssh_ed25519() {
+        std::env::set_var("HOME", "/home/user");
+        let path = Path::new("/home/user/.ssh/id_ed25519");
+        let result = get_required_permission(path);
+        assert!(result.is_some());
+        let (mode, desc) = result.unwrap();
+        assert_eq!(mode, 0o600);
+        assert!(desc.contains("Ed25519"));
+    }
+
+    #[test]
+    fn test_get_required_permission_ssh_authorized_keys() {
+        std::env::set_var("HOME", "/home/user");
+        let path = Path::new("/home/user/.ssh/authorized_keys");
+        let result = get_required_permission(path);
+        assert!(result.is_some());
+        let (mode, _) = result.unwrap();
+        assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn test_get_required_permission_gnupg() {
+        std::env::set_var("HOME", "/home/user");
+        let path = Path::new("/home/user/.gnupg");
+        let result = get_required_permission(path);
+        assert!(result.is_some());
+        let (mode, _) = result.unwrap();
+        assert_eq!(mode, 0o700);
+    }
+
+    #[test]
+    fn test_get_required_permission_shell_config() {
+        std::env::set_var("HOME", "/home/user");
+        let path = Path::new("/home/user/.bashrc");
+        let result = get_required_permission(path);
+        assert!(result.is_some());
+        let (mode, _) = result.unwrap();
+        assert_eq!(mode, 0o644);
+    }
+
+    #[test]
+    fn test_get_required_permission_tilde_path() {
+        std::env::set_var("HOME", "/home/testuser");
+        let path = Path::new("/home/testuser/.ssh/id_ed25519");
+        let result = get_required_permission(path);
+        assert!(result.is_some());
+        let (mode, _) = result.unwrap();
+        assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn test_get_required_permission_pattern_pem() {
+        let path = Path::new("/some/path/server.pem");
+        let result = get_required_permission(path);
+        assert!(result.is_some());
+        let (mode, desc) = result.unwrap();
+        assert_eq!(mode, 0o600);
+        assert!(desc.contains("PEM"));
+    }
+
+    #[test]
+    fn test_get_required_permission_pattern_key() {
+        let path = Path::new("/some/path/mykey.key");
+        let result = get_required_permission(path);
+        assert!(result.is_some());
+        let (mode, _) = result.unwrap();
+        assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn test_get_required_permission_pattern_id_rsa() {
+        // id_rsa_custom should match id_rsa* pattern
+        let path = Path::new("/some/path/id_rsa_custom");
+        let result = get_required_permission(path);
+        assert!(result.is_some());
+        let (mode, _) = result.unwrap();
+        assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn test_get_required_permission_not_sensitive() {
+        let path = Path::new("/home/user/.config/regular_app/config.txt");
+        let result = get_required_permission(path);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_glob_match_id_rsa_prefix() {
+        assert!(glob_match("id_rsa*", "id_rsa"));
+        assert!(glob_match("id_rsa*", "id_rsa.pub"));
+        assert!(glob_match("id_rsa*", "id_rsa_custom_key"));
+        assert!(!glob_match("id_rsa*", "other_key"));
+    }
+
+    #[test]
+    fn test_glob_match_pem_suffix() {
+        assert!(glob_match("*.pem", "server.pem"));
+        assert!(glob_match("*.pem", "cert.pem"));
+        assert!(!glob_match("*.pem", "server.key"));
+    }
 }
