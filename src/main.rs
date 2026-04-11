@@ -21,7 +21,6 @@ fn main() {
     let result = match cli.command.as_ref().unwrap_or(&Command::Deploy) {
         Command::Deploy => cmd_deploy(&cli),
         Command::Undeploy => cmd_undeploy(&cli),
-        Command::CheckPermissions => cmd_check_permissions(&cli),
         Command::Validate { files } => cmd_validate(&cli, files),
         Command::New => cmd_new(&cli),
         Command::Completion { shell } => cmd_completion(&cli, shell),
@@ -319,74 +318,6 @@ fn cmd_undeploy(cli: &Cli) -> Result<(), String> {
         Ok(())
     } else {
         Err("Some links failed to undeploy".to_string())
-    }
-}
-
-fn cmd_check_permissions(cli: &Cli) -> Result<(), String> {
-    log(cli, "info", "Checking permissions...");
-    
-    let config_path = Path::new("xdotter.toml");
-    if !config_path.exists() {
-        return Err(format!("Config file not found: {}", config_path.display()));
-    }
-    
-    let content = fs::read_to_string(config_path)
-        .map_err(|e| format!("Failed to read config: {}", e))?;
-    
-    let fmt = detect_format(config_path).unwrap_or("toml");
-    let config = if fmt == "json" {
-        Config::from_json(&content)?
-    } else {
-        Config::from_toml(&content)?
-    };
-    
-    let mut has_issues = false;
-    let fix_mode = cli.fix_permissions;
-    
-    for (_actual_path, link) in &config.links {
-        let link_path = expand_path(link);
-        if !link_path.is_symlink() {
-            continue;
-        }
-        
-        // Resolve symlink to get actual file
-        if let Ok(resolved) = link_path.canonicalize() {
-            if let Some((required_mode, description)) = get_required_permission(&link_path) {
-                let is_correct = check_permission(&resolved, required_mode);
-                if is_correct {
-                    if !cli.quiet {
-                        println!("\x1b[0;32m✓\x1b[0m {}: {} (permission: {:03o})", 
-                            description, link_path.display(), required_mode);
-                    }
-                } else {
-                    if fix_mode {
-                        if cli.dry_run {
-                            log(cli, "info", &format!("Would fix permission for {} to {:03o}", 
-                                link_path.display(), required_mode));
-                        } else {
-                            if fix_permission(&resolved, required_mode) {
-                                log(cli, "info", &format!("Fixed permission for {} to {:03o}", 
-                                    link_path.display(), required_mode));
-                            } else {
-                                log(cli, "error", &format!("Failed to fix permission for {}", 
-                                    link_path.display()));
-                                has_issues = true;
-                            }
-                        }
-                    } else {
-                        log(cli, "warning", &format!("{}: {} has wrong permission", 
-                            description, link_path.display()));
-                        has_issues = true;
-                    }
-                }
-            }
-        }
-    }
-    
-    if has_issues && !fix_mode {
-        Err("Permission issues found. Use --fix-permissions to fix them.".to_string())
-    } else {
-        Ok(())
     }
 }
 
