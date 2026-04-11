@@ -838,13 +838,53 @@ else
 fi
 rm -rf "$tmpdir"
 
-# Test: Completion command removed
+# Test: Completion Bash
 tmpdir=$(mktemp -d)
-output=$(run_xd "$tmpdir" completion bash 2>&1)
-if echo "$output" | grep -qi "error\|invalid\|unrecognized"; then
-    log_test "Completion Command Removed" "PASS"
+output=$(run_xd "$tmpdir" completion bash)
+if echo "$output" | grep -q "_xd"; then
+    log_test "Completion Bash" "PASS"
 else
-    log_test "Completion Command Removed" "FAIL" "output: $output"
+    log_test "Completion Bash" "FAIL"
+fi
+rm -rf "$tmpdir"
+
+# Test: Completion Zsh
+tmpdir=$(mktemp -d)
+output=$(run_xd "$tmpdir" completion zsh)
+if echo "$output" | grep -q "compdef"; then
+    log_test "Completion Zsh" "PASS"
+else
+    log_test "Completion Zsh" "FAIL"
+fi
+rm -rf "$tmpdir"
+
+# Test: Completion Fish
+tmpdir=$(mktemp -d)
+output=$(run_xd "$tmpdir" completion fish)
+if echo "$output" | grep -q "complete"; then
+    log_test "Completion Fish" "PASS"
+else
+    log_test "Completion Fish" "FAIL"
+fi
+rm -rf "$tmpdir"
+
+# Test: Completion No Shell
+tmpdir=$(mktemp -d)
+output=$(run_xd "$tmpdir" completion 2>&1)
+if echo "$output" | grep -qi "error\|required\|missing"; then
+    log_test "Completion No Shell" "PASS"
+else
+    log_test "Completion No Shell" "FAIL"
+fi
+rm -rf "$tmpdir"
+
+# Test: Completion Invalid Shell
+tmpdir=$(mktemp -d)
+output=$(run_xd "$tmpdir" completion powershell 2>&1)
+if echo "$output" | grep -qi "unsupported\|invalid\|error"; then
+    log_test "Completion Invalid Shell" "PASS"
+else
+    log_test "Completion Invalid Shell" "FAIL"
 fi
 rm -rf "$tmpdir"
 

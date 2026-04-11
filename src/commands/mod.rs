@@ -9,6 +9,11 @@ use std::path::{Path, PathBuf};
 
 const VERSION: &str = "0.4.0";
 
+// Completion scripts are generated at build time into OUT_DIR
+const BASH_COMPLETION: &str = include_str!(concat!(env!("OUT_DIR"), "/xd.bash"));
+const ZSH_COMPLETION: &str = include_str!(concat!(env!("OUT_DIR"), "/_xd"));
+const FISH_COMPLETION: &str = include_str!(concat!(env!("OUT_DIR"), "/xd.fish"));
+
 pub fn log(cli: &Cli, level: &str, msg: &str) {
     if cli.quiet {
         return;
@@ -38,12 +43,29 @@ pub fn dispatch(cli: &Cli) -> Result<(), String> {
         Command::Status => cmd_status(cli),
         Command::Validate { files } => cmd_validate(cli, files),
         Command::New => cmd_new(cli),
+        Command::Completion { shell } => cmd_completion(shell),
         Command::Version => cmd_version(cli),
     }
 }
 
 fn cmd_version(_cli: &Cli) -> Result<(), String> {
     println!("xdotter {}", VERSION);
+    Ok(())
+}
+
+fn cmd_completion(shell: &str) -> Result<(), String> {
+    let script = match shell.to_lowercase().as_str() {
+        "bash" => BASH_COMPLETION,
+        "zsh" => ZSH_COMPLETION,
+        "fish" => FISH_COMPLETION,
+        _ => {
+            return Err(format!(
+                "Unsupported shell: {}. Supported: bash, zsh, fish",
+                shell
+            ))
+        }
+    };
+    print!("{}", script);
     Ok(())
 }
 
