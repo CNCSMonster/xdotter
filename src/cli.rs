@@ -46,6 +46,8 @@ pub enum Command {
     Deploy,
     /// Remove deployed dotfiles
     Undeploy,
+    /// Show deployment status
+    Status,
     /// Validate configuration file syntax
     Validate {
         /// Files to validate

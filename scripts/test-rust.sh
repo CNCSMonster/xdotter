@@ -899,6 +899,66 @@ else
 fi
 rm -rf "$tmpdir"
 
+# ============================================================
+# Status Command Tests
+# ============================================================
+
+# Test: Status Shows Deployed Links
+tmpdir=$(mktemp -d)
+mkdir -p "$tmpdir/source" "$tmpdir/.cache"
+echo "test" > "$tmpdir/source/test.txt"
+cat > "$tmpdir/xdotter.toml" << 'EOF'
+[links]
+"source/test.txt" = "~/.cache/xdotter_status_test1.txt"
+EOF
+run_xd "$tmpdir" deploy > /dev/null 2>&1
+output=$(run_xd "$tmpdir" status 2>&1)
+if echo "$output" | grep -q "1/1 deployed"; then
+    log_test "Status Shows Deployed Links" "PASS"
+else
+    log_test "Status Shows Deployed Links" "FAIL" "output: $output"
+fi
+rm -f "$tmpdir/.cache/xdotter_status_test1.txt" 2>/dev/null
+rm -rf "$tmpdir"
+
+# Test: Status Shows Broken Symlink
+tmpdir=$(mktemp -d)
+mkdir -p "$tmpdir/source" "$tmpdir/.cache"
+echo "test" > "$tmpdir/source/test.txt"
+cat > "$tmpdir/xdotter.toml" << 'EOF'
+[links]
+"source/test.txt" = "~/.cache/xdotter_broken_test.txt"
+EOF
+run_xd "$tmpdir" deploy > /dev/null 2>&1
+# Remove source to create broken symlink
+rm -f "$tmpdir/source/test.txt"
+output=$(run_xd "$tmpdir" status 2>&1)
+if echo "$output" | grep -qi "broken\|missing"; then
+    log_test "Status Shows Broken Symlink" "PASS"
+else
+    log_test "Status Shows Broken Symlink" "FAIL" "output: $output"
+fi
+rm -f "$tmpdir/.cache/xdotter_broken_test.txt" 2>/dev/null
+rm -rf "$tmpdir"
+
+# Test: Status Verbose Mode
+tmpdir=$(mktemp -d)
+mkdir -p "$tmpdir/source" "$tmpdir/.cache"
+echo "test" > "$tmpdir/source/test.txt"
+cat > "$tmpdir/xdotter.toml" << 'EOF'
+[links]
+"source/test.txt" = "~/.cache/xdotter_verbose_status.txt"
+EOF
+run_xd "$tmpdir" deploy > /dev/null 2>&1
+output=$(run_xd "$tmpdir" status -v 2>&1)
+if echo "$output" | grep -q "✓"; then
+    log_test "Status Verbose Mode" "PASS"
+else
+    log_test "Status Verbose Mode" "FAIL" "output: $output"
+fi
+rm -f "$tmpdir/.cache/xdotter_verbose_status.txt" 2>/dev/null
+rm -rf "$tmpdir"
+
 # Summary
 echo ""
 echo "=================================================="

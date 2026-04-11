@@ -14,7 +14,11 @@ static SENSITIVE_PATHS: &[(&str, u32, &str)] = &[
     ("~/.ssh/known_hosts", 0o644, "SSH known hosts"),
     // GPG
     ("~/.gnupg", 0o700, "GPG directory"),
-    ("~/.gnupg/private-keys-v1.d", 0o700, "GPG private keys directory"),
+    (
+        "~/.gnupg/private-keys-v1.d",
+        0o700,
+        "GPG private keys directory",
+    ),
     ("~/.gnupg/gpg.conf", 0o600, "GPG config"),
     // Shell configs
     ("~/.bashrc", 0o644, "Bash config"),

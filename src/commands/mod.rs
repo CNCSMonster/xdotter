@@ -1,6 +1,7 @@
 use crate::cli::{Cli, Command};
 use crate::config::{detect_format, validate_json, validate_toml, Config};
 use crate::expand_path;
+use crate::permissions::{check_permission, fix_permission, get_required_permission};
 use crate::symlink;
 use clap::CommandFactory;
 use clap_complete::{generate, Shell as ClapShell};
@@ -36,6 +37,7 @@ pub fn dispatch(cli: &Cli) -> Result<(), String> {
     match cli.command.as_ref().unwrap_or(&Command::Deploy) {
         Command::Deploy => cmd_deploy(cli),
         Command::Undeploy => cmd_undeploy(cli),
+        Command::Status => cmd_status(cli),
         Command::Validate { files } => cmd_validate(cli, files),
         Command::New => cmd_new(cli),
         Command::Completion { shell } => cmd_completion(cli, shell),
@@ -107,6 +109,122 @@ fn validate_config_file(filepath: &Path) -> Result<(), String> {
         Some("toml") => validate_toml(&content),
         Some("json") => validate_json(&content),
         _ => Err(format!("Unknown file format: {}", filepath.display())),
+    }
+}
+
+fn cmd_status(cli: &Cli) -> Result<(), String> {
+    let config_path = Path::new("xdotter.toml");
+    if !config_path.exists() {
+        return Err(format!("Config file not found: {}", config_path.display()));
+    }
+
+    let content =
+        fs::read_to_string(config_path).map_err(|e| format!("Failed to read config: {}", e))?;
+
+    let fmt = detect_format(config_path).unwrap_or("toml");
+    let config = if fmt == "json" {
+        Config::from_json(&content)?
+    } else {
+        Config::from_toml(&content)?
+    };
+
+    let mut total = 0;
+    let mut valid = 0;
+    let mut broken = 0;
+    let mut perm_issues = 0;
+
+    for link in config.links.values() {
+        total += 1;
+        let link_path = expand_path(link);
+
+        if link_path.is_symlink() {
+            if let Ok(resolved) = fs::read_link(&link_path) {
+                // Check if target exists
+                let target_exists = expand_path(&resolved.to_string_lossy()).exists();
+                if target_exists {
+                    valid += 1;
+                    // Check permissions
+                    if let Ok(canonical) = link_path.canonicalize() {
+                        if let Some((required_mode, description)) =
+                            get_required_permission(&link_path)
+                        {
+                            if !check_permission(&canonical, required_mode) {
+                                perm_issues += 1;
+                                if !cli.quiet {
+                                    log(
+                                        cli,
+                                        "warning",
+                                        &format!(
+                                            "{} -> {} ({}: expected {:03o})",
+                                            link_path.display(),
+                                            canonical.display(),
+                                            description,
+                                            required_mode
+                                        ),
+                                    );
+                                }
+                            } else if cli.verbose {
+                                log(
+                                    cli,
+                                    "info",
+                                    &format!(
+                                        "✓ {} -> {} ({:03o})",
+                                        link_path.display(),
+                                        canonical.display(),
+                                        required_mode
+                                    ),
+                                );
+                            }
+                        } else if cli.verbose {
+                            log(
+                                cli,
+                                "info",
+                                &format!("✓ {} -> {}", link_path.display(), canonical.display()),
+                            );
+                        }
+                    }
+                } else {
+                    broken += 1;
+                    log(
+                        cli,
+                        "warning",
+                        &format!(
+                            "✗ {} -> {} (broken: target missing)",
+                            link_path.display(),
+                            resolved.display()
+                        ),
+                    );
+                }
+            }
+        } else if link_path.exists() {
+            broken += 1;
+            log(
+                cli,
+                "warning",
+                &format!(
+                    "✗ {} (not a symlink, regular file exists)",
+                    link_path.display()
+                ),
+            );
+        }
+        // else: link doesn't exist, not deployed yet (not counted as broken)
+    }
+
+    if !cli.quiet {
+        println!();
+        println!("Status: {}/{} deployed", valid, total);
+        if broken > 0 {
+            println!("Broken links: {}", broken);
+        }
+        if perm_issues > 0 {
+            println!("Permission issues: {}", perm_issues);
+        }
+    }
+
+    if perm_issues > 0 {
+        Err("Permission issues found. Use --fix-permissions to fix.".to_string())
+    } else {
+        Ok(())
     }
 }
 
@@ -365,6 +483,3 @@ fn cmd_undeploy(cli: &Cli) -> Result<(), String> {
         Err("Some links failed to undeploy".to_string())
     }
 }
-
-// Re-export permission functions needed by cmd_deploy
-use crate::permissions::{check_permission, fix_permission, get_required_permission};
