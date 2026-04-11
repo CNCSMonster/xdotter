@@ -1,10 +1,8 @@
 use crate::cli::{Cli, Command};
-use crate::config::{detect_format, validate_json, validate_toml, Config};
+use crate::config::{detect_format, validate_toml, Config};
 use crate::expand_path;
 use crate::permissions::{check_permission, fix_permission, get_required_permission};
 use crate::symlink;
-use clap::CommandFactory;
-use clap_complete::{generate, Shell as ClapShell};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -40,31 +38,12 @@ pub fn dispatch(cli: &Cli) -> Result<(), String> {
         Command::Status => cmd_status(cli),
         Command::Validate { files } => cmd_validate(cli, files),
         Command::New => cmd_new(cli),
-        Command::Completion { shell } => cmd_completion(cli, shell),
         Command::Version => cmd_version(cli),
     }
 }
 
 fn cmd_version(_cli: &Cli) -> Result<(), String> {
     println!("xdotter {}", VERSION);
-    Ok(())
-}
-
-fn cmd_completion(_cli: &Cli, shell: &str) -> Result<(), String> {
-    let mut cmd = Cli::command();
-    let clap_shell = match shell.to_lowercase().as_str() {
-        "bash" => ClapShell::Bash,
-        "zsh" => ClapShell::Zsh,
-        "fish" => ClapShell::Fish,
-        _ => {
-            return Err(format!(
-                "Unsupported shell: {}. Supported: bash, zsh, fish",
-                shell
-            ))
-        }
-    };
-
-    generate(clap_shell, &mut cmd, "xd", &mut io::stdout());
     Ok(())
 }
 
@@ -107,8 +86,7 @@ fn validate_config_file(filepath: &Path) -> Result<(), String> {
 
     match detect_format(filepath) {
         Some("toml") => validate_toml(&content),
-        Some("json") => validate_json(&content),
-        _ => Err(format!("Unknown file format: {}", filepath.display())),
+        _ => Err(format!("Unknown file format: {}. Only TOML is supported.", filepath.display())),
     }
 }
 
@@ -121,12 +99,7 @@ fn cmd_status(cli: &Cli) -> Result<(), String> {
     let content =
         fs::read_to_string(config_path).map_err(|e| format!("Failed to read config: {}", e))?;
 
-    let fmt = detect_format(config_path).unwrap_or("toml");
-    let config = if fmt == "json" {
-        Config::from_json(&content)?
-    } else {
-        Config::from_toml(&content)?
-    };
+    let config = Config::from_toml(&content)?;
 
     let mut total = 0;
     let mut valid = 0;
@@ -230,7 +203,7 @@ fn cmd_status(cli: &Cli) -> Result<(), String> {
 
 fn cmd_validate(cli: &Cli, files: &[PathBuf]) -> Result<(), String> {
     if files.is_empty() {
-        let defaults = ["xdotter.toml", "xdotter.json"];
+        let defaults = ["xdotter.toml"];
         let mut found = false;
         for f in &defaults {
             let path = Path::new(f);
@@ -244,7 +217,7 @@ fn cmd_validate(cli: &Cli, files: &[PathBuf]) -> Result<(), String> {
             }
         }
         if !found {
-            return Err("No default config file found (xdotter.toml or xdotter.json)".to_string());
+            return Err("No default config file found (xdotter.toml)".to_string());
         }
     } else {
         let mut all_valid = true;
@@ -293,12 +266,7 @@ fn cmd_deploy(cli: &Cli) -> Result<(), String> {
     let content =
         fs::read_to_string(config_path).map_err(|e| format!("Failed to read config: {}", e))?;
 
-    let fmt = detect_format(config_path).unwrap_or("toml");
-    let config = if fmt == "json" {
-        Config::from_json(&content)?
-    } else {
-        Config::from_toml(&content)?
-    };
+    let config = Config::from_toml(&content)?;
 
     log(
         cli,
@@ -420,12 +388,7 @@ fn cmd_undeploy(cli: &Cli) -> Result<(), String> {
     let content =
         fs::read_to_string(config_path).map_err(|e| format!("Failed to read config: {}", e))?;
 
-    let fmt = detect_format(config_path).unwrap_or("toml");
-    let config = if fmt == "json" {
-        Config::from_json(&content)?
-    } else {
-        Config::from_toml(&content)?
-    };
+    let config = Config::from_toml(&content)?;
 
     let mut success = true;
 

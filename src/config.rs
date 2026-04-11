@@ -10,17 +10,8 @@ pub struct Config {
 
 impl Config {
     pub fn from_toml(content: &str) -> Result<Self, String> {
-        let data: TomlData = toml::from_str(content).map_err(|e| format_toml_error(content, &e))?;
-
-        Ok(Config {
-            links: data.links.unwrap_or_default(),
-            dependencies: data.dependencies.unwrap_or_default(),
-        })
-    }
-
-    pub fn from_json(content: &str) -> Result<Self, String> {
-        let data: JsonData =
-            serde_json::from_str(content).map_err(|e| format_json_error(content, &e))?;
+        let data: TomlData =
+            basic_toml::from_str(content).map_err(|e| format_toml_error(content, &e))?;
 
         Ok(Config {
             links: data.links.unwrap_or_default(),
@@ -35,35 +26,21 @@ struct TomlData {
     dependencies: Option<HashMap<String, String>>,
 }
 
-#[derive(Deserialize)]
-struct JsonData {
-    links: Option<HashMap<String, String>>,
-    dependencies: Option<HashMap<String, String>>,
-}
-
 pub fn validate_toml(content: &str) -> Result<(), String> {
-    let _: TomlData = toml::from_str(content).map_err(|e| format_toml_error(content, &e))?;
-    Ok(())
-}
-
-pub fn validate_json(content: &str) -> Result<(), String> {
-    let _: JsonData = serde_json::from_str(content).map_err(|e| format_json_error(content, &e))?;
+    let _: TomlData =
+        basic_toml::from_str(content).map_err(|e| format_toml_error(content, &e))?;
     Ok(())
 }
 
 pub fn detect_format(filepath: &Path) -> Option<&'static str> {
     match filepath.extension().and_then(|e| e.to_str()) {
         Some("toml") => Some("toml"),
-        Some("json") => Some("json"),
         _ => None,
     }
 }
 
-fn format_toml_error(content: &str, error: &toml::de::Error) -> String {
-    let line = error
-        .span()
-        .map(|s| content[..s.start].lines().count() + 1)
-        .unwrap_or(1);
+fn format_toml_error(content: &str, error: &basic_toml::Error) -> String {
+    let line = error.line_col().map(|(l, _)| l + 1).unwrap_or(1);
     let lines: Vec<&str> = content.lines().collect();
     let error_line = lines.get(line.saturating_sub(1)).unwrap_or(&"");
     let prev_line = if line > 1 { lines.get(line - 2) } else { None };
@@ -71,8 +48,7 @@ fn format_toml_error(content: &str, error: &toml::de::Error) -> String {
 
     let mut msg = format!(
         "❌ TOML 语法错误\n\n错误：{} (第 {} 行)",
-        error.message(),
-        line
+        error, line
     );
 
     if let Some(prev) = prev_line {
@@ -83,42 +59,9 @@ fn format_toml_error(content: &str, error: &toml::de::Error) -> String {
         msg.push_str(&format!("\n  {} | {}", line + 1, next));
     }
 
-    // Add suggestion
-    let error_msg = error.message().to_lowercase();
+    let error_msg = error.to_string().to_lowercase();
     if error_msg.contains("expected") || error_msg.contains("invalid") {
         msg.push_str("\n\n提示：检查语法，键名可能需要引号包裹");
-    }
-
-    msg
-}
-
-fn format_json_error(content: &str, error: &serde_json::Error) -> String {
-    let line = error.line();
-    let column = error.column();
-    let lines: Vec<&str> = content.lines().collect();
-    let error_line = lines.get(line.saturating_sub(1)).unwrap_or(&"");
-    let prev_line = if line > 1 { lines.get(line - 2) } else { None };
-    let next_line = lines.get(line);
-
-    let mut msg = format!(
-        "❌ JSON 语法错误\n\n错误：{} (第 {} 行，第 {} 列)",
-        error, line, column
-    );
-
-    if let Some(prev) = prev_line {
-        msg.push_str(&format!("\n  {} | {}", line - 1, prev));
-    }
-    msg.push_str(&format!("\n> {} | {}", line, error_line));
-    if let Some(next) = next_line {
-        msg.push_str(&format!("\n  {} | {}", line + 1, next));
-    }
-
-    // Add suggestion
-    let error_msg = error.to_string().to_lowercase();
-    if error_msg.contains("comma") {
-        msg.push_str("\n\n提示：JSON 对象属性之间需要用逗号分隔");
-    } else if error_msg.contains("quote") {
-        msg.push_str("\n\n提示：JSON 键名必须是字符串（用双引号包裹）");
     }
 
     msg
@@ -152,26 +95,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_valid_json() {
-        let content = r#"{
-  "links": {"~/.zshrc": "~/.config/zshrc"},
-  "dependencies": {"nvim": "config/nvim"}
-}"#;
-        let config = Config::from_json(content).unwrap();
-        assert_eq!(config.links.get("~/.zshrc").unwrap(), "~/.config/zshrc");
-    }
-
-    #[test]
-    fn test_parse_invalid_json() {
-        let content = r#"{"links": }"#;
-        assert!(Config::from_json(content).is_err());
-    }
-
-    #[test]
     fn test_detect_format() {
         use std::path::Path;
         assert_eq!(detect_format(Path::new("config.toml")), Some("toml"));
-        assert_eq!(detect_format(Path::new("config.json")), Some("json"));
         assert_eq!(detect_format(Path::new("config.yaml")), None);
     }
 
@@ -179,14 +105,6 @@ mod tests {
     fn test_parse_empty_toml() {
         let content = "";
         let config = Config::from_toml(content).unwrap();
-        assert!(config.links.is_empty());
-        assert!(config.dependencies.is_empty());
-    }
-
-    #[test]
-    fn test_parse_empty_json() {
-        let content = "{}";
-        let config = Config::from_json(content).unwrap();
         assert!(config.links.is_empty());
         assert!(config.dependencies.is_empty());
     }
@@ -206,11 +124,5 @@ mod tests {
     fn test_validate_empty_toml() {
         let content = "";
         assert!(validate_toml(content).is_ok());
-    }
-
-    #[test]
-    fn test_validate_empty_json() {
-        let content = "{}";
-        assert!(validate_json(content).is_ok());
     }
 }

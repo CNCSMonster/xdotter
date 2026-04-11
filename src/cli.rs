@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
@@ -55,18 +55,6 @@ pub enum Command {
     },
     /// Create a new xdotter.toml template
     New,
-    /// Generate shell completion scripts
-    Completion {
-        /// Shell to generate completion for
-        shell: String,
-    },
     /// Print version
     Version,
-}
-
-#[derive(ValueEnum, Clone, Debug, PartialEq)]
-pub enum Shell {
-    Bash,
-    Zsh,
-    Fish,
 }

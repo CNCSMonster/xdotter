@@ -1262,22 +1262,15 @@ def test_validate_command_invalid_toml():
             log_test("Validate rejects invalid TOML", "FAIL", f"code={code}")
 
 
-def test_validate_command_valid_json():
-    """Test validate command with valid JSON file"""
+def test_validate_command_rejects_json():
+    """Test validate command with valid JSON file (Python still supports JSON)"""
     print("\n[Test: Validate Valid JSON]")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
 
-        # Create valid JSON config
         config = tmppath / "xdotter.json"
-        config.write_text('''
-{
-    "links": {
-        ".zshrc": "~/.zshrc"
-    }
-}
-''')
+        config.write_text('{"links": {".zshrc": "~/.zshrc"}}')
 
         code, stdout, stderr = run_xd(["validate", str(config)])
 
@@ -1294,20 +1287,16 @@ def test_validate_command_invalid_json():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
 
-        # Create invalid JSON config (missing comma)
         config = tmppath / "invalid.json"
-        config.write_text('''
-{
-    "links": {
-        ".zshrc": "~/.zshrc"
-        ".bashrc": "~/.bashrc"
-    }
-}
-''')
+        config.write_text('{"links": }')
 
         code, stdout, stderr = run_xd(["validate", str(config)])
 
-        # Should fail with error message
+        output = stdout + stderr
+        if code != 0 and ("error" in output.lower() or "invalid" in output.lower()):
+            log_test("Validate rejects invalid JSON", "PASS")
+        else:
+            log_test("Validate rejects invalid JSON", "FAIL", f"code={code}")
         if code != 0 or "错误" in stdout or "error" in stdout.lower() or "✗" in stdout or "Expecting" in stdout:
             log_test("Validate rejects invalid JSON", "PASS")
         else:
@@ -1759,8 +1748,8 @@ def main():
     # Validate command tests
     test_validate_command_valid_toml()
     test_validate_command_invalid_toml()
-    test_validate_command_valid_json()
-    test_validate_command_invalid_json()
+    test_validate_command_rejects_json()
+    test_completion_command_bash()
     test_validate_command_nonexistent_file()
     test_validate_command_multiple_files()
     test_validate_command_default_files()

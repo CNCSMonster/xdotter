@@ -10,11 +10,9 @@ name = "xd"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4", features = ["derive", "env"] }
-clap_complete = "4"
-toml = "0.8"
+clap = { version = "4", features = ["derive"] }
+basic-toml = "0.1"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 dirs = "5"
 
 [profile.release]

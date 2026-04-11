@@ -330,75 +330,14 @@ else
 fi
 rm -rf "$tmpdir"
 
-# Test: Validate Valid JSON
+# Test: Validate rejects JSON (TOML only now)
 tmpdir=$(mktemp -d)
 echo '{"links": {"source/test.txt": "~/.cache/test.txt"}}' > "$tmpdir/xdotter.json"
-output=$(run_xd "$tmpdir" validate "$tmpdir/xdotter.json")
-if echo "$output" | grep -qi "valid"; then
-    log_test "Validate Valid JSON" "PASS"
+output=$(run_xd "$tmpdir" validate "$tmpdir/xdotter.json" 2>&1)
+if echo "$output" | grep -qi "unknown\|not supported\|toml only"; then
+    log_test "Validate Rejects JSON" "PASS"
 else
-    log_test "Validate Valid JSON" "FAIL"
-fi
-rm -rf "$tmpdir"
-
-# Test: Validate Invalid JSON
-tmpdir=$(mktemp -d)
-echo '{"links": }' > "$tmpdir/xdotter.json"
-output=$(run_xd "$tmpdir" validate "$tmpdir/xdotter.json")
-if echo "$output" | grep -qi "error\|invalid\|fail"; then
-    log_test "Validate Invalid JSON" "PASS"
-else
-    log_test "Validate Invalid JSON" "FAIL"
-fi
-rm -rf "$tmpdir"
-
-# Test: Completion Bash
-tmpdir=$(mktemp -d)
-output=$(run_xd "$tmpdir" completion bash)
-if echo "$output" | grep -q "xd"; then
-    log_test "Completion Bash" "PASS"
-else
-    log_test "Completion Bash" "FAIL"
-fi
-rm -rf "$tmpdir"
-
-# Test: Completion Zsh
-tmpdir=$(mktemp -d)
-output=$(run_xd "$tmpdir" completion zsh)
-if echo "$output" | grep -q "xd"; then
-    log_test "Completion Zsh" "PASS"
-else
-    log_test "Completion Zsh" "FAIL"
-fi
-rm -rf "$tmpdir"
-
-# Test: Completion Fish
-tmpdir=$(mktemp -d)
-output=$(run_xd "$tmpdir" completion fish)
-if echo "$output" | grep -q "xd"; then
-    log_test "Completion Fish" "PASS"
-else
-    log_test "Completion Fish" "FAIL"
-fi
-rm -rf "$tmpdir"
-
-# Test: Completion No Shell
-tmpdir=$(mktemp -d)
-output=$(run_xd "$tmpdir" completion 2>&1)
-if echo "$output" | grep -qi "error\|required\|missing"; then
-    log_test "Completion No Shell" "PASS"
-else
-    log_test "Completion No Shell" "FAIL"
-fi
-rm -rf "$tmpdir"
-
-# Test: Completion Invalid Shell
-tmpdir=$(mktemp -d)
-output=$(run_xd "$tmpdir" completion invalid_shell 2>&1)
-if echo "$output" | grep -qi "error\|unsupported\|invalid"; then
-    log_test "Completion Invalid Shell" "PASS"
-else
-    log_test "Completion Invalid Shell" "FAIL"
+    log_test "Validate Rejects JSON" "FAIL" "output: $output"
 fi
 rm -rf "$tmpdir"
 
@@ -888,14 +827,24 @@ else
 fi
 rm -rf "$tmpdir"
 
-# Test: JSON Config Validation
+# Test: JSON Config Validation - no longer supported
 tmpdir=$(mktemp -d)
 echo '{"links": {"source/test.txt": "~/.cache/test.txt"}}' > "$tmpdir/xdotter.json"
 output=$(run_xd "$tmpdir" validate "$tmpdir/xdotter.json" 2>&1)
-if echo "$output" | grep -qi "valid"; then
-    log_test "JSON Config Validation" "PASS"
+if echo "$output" | grep -qi "unknown\|not supported\|toml only"; then
+    log_test "JSON Config Rejected" "PASS"
 else
-    log_test "JSON Config Validation" "FAIL" "output: $output"
+    log_test "JSON Config Rejected" "FAIL" "output: $output"
+fi
+rm -rf "$tmpdir"
+
+# Test: Completion command removed
+tmpdir=$(mktemp -d)
+output=$(run_xd "$tmpdir" completion bash 2>&1)
+if echo "$output" | grep -qi "error\|invalid\|unrecognized"; then
+    log_test "Completion Command Removed" "PASS"
+else
+    log_test "Completion Command Removed" "FAIL" "output: $output"
 fi
 rm -rf "$tmpdir"
 
