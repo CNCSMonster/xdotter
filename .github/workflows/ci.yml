@@ -2,36 +2,113 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main, rust-rewrite]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  test:
+  # 1. Compilation check
+  check:
+    name: Check
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.8', '3.10', '3.12']
-
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - run: cargo check --all-targets
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+  # 2. Clippy lints
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: ${{ matrix.python-version }}
+          components: clippy
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets -- -D warnings
 
-      - name: Ensure vendored tomli is present (required for Python <3.11)
+  # 3. Rustfmt
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --check
+
+  # 4. Unit + Integration tests (cargo test)
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    needs: [check]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - run: cargo test --no-fail-fast
+
+  # 5. E2E tests (shell test runner)
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: [check]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Build debug binary
+        run: cargo build
+      - name: Run E2E test suite
+        run: bash scripts/test-rust.sh
+
+  # 6. Binary size check (release only)
+  binary-size:
+    name: Binary Size
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - name: Check binary size
         run: |
-          if [ ! -f _vendor/tomli/__init__.py ]; then
-            echo "::error::Missing _vendor/tomli. Run ./scripts/vendor-tomli.sh and commit _vendor/."
+          size=$(stat -c%s target/release/xd)
+          max_size=1048576  # 1MB
+          echo "Binary size: $((size / 1024))KB"
+          if [ $size -gt $max_size ]; then
+            echo "::error::Binary too large: $size bytes (max: $max_size)"
             exit 1
           fi
+          echo "✓ Binary size within limit ($((max_size / 1024))KB)"
 
-      - name: Install bubblewrap (for isolated test run)
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap
-
-      - name: Run tests (isolated with bwrap)
-        env:
-          XDOTTER_TEST_NO_ISOLATION: "1"
-        run: ./scripts/run-tests-isolated.sh
+  # 7. Cross-platform build verification
+  cross-build:
+    name: Cross Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - name: Verify binary
+        run: |
+          ./target/release/xd version
