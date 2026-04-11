@@ -11,17 +11,37 @@ static SENSITIVE_PATHS: &[(&str, u32, &str)] = &[
     ("~/.ssh/id_dsa", 0o600, "SSH DSA private key"),
     ("~/.ssh/authorized_keys", 0o600, "SSH authorized keys"),
     ("~/.ssh/config", 0o600, "SSH config"),
+    ("~/.ssh/known_hosts", 0o644, "SSH known hosts"),
     // GPG
     ("~/.gnupg", 0o700, "GPG directory"),
+    ("~/.gnupg/private-keys-v1.d", 0o700, "GPG private keys directory"),
     ("~/.gnupg/gpg.conf", 0o600, "GPG config"),
     // Shell configs
     ("~/.bashrc", 0o644, "Bash config"),
     ("~/.zshrc", 0o644, "Zsh config"),
     ("~/.bash_profile", 0o644, "Bash login profile"),
     ("~/.profile", 0o644, "Shell profile"),
+    ("~/.zshenv", 0o644, "Zsh environment"),
+    ("~/.zprofile", 0o644, "Zsh login profile"),
+    // X11
+    ("~/.xinitrc", 0o755, "X11 init script"),
+    ("~/.xsession", 0o755, "X11 session script"),
+    ("~/.xprofile", 0o644, "X session environment"),
+    ("~/.Xauthority", 0o600, "X11 authentication"),
     // Other sensitive
     ("~/.netrc", 0o600, "Netrc password file"),
     ("~/.pgpass", 0o600, "PostgreSQL password file"),
+    // Cloud/Service credentials
+    ("~/.aws/credentials", 0o600, "AWS credentials"),
+    ("~/.docker/config.json", 0o644, "Docker config"),
+    ("~/.git-credentials", 0o600, "Git credentials"),
+    ("~/.npmrc", 0o600, "NPM config"),
+    ("~/.pypirc", 0o600, "PyPI config"),
+    // Database
+    ("~/.my.cnf", 0o600, "MySQL config"),
+    ("~/.psqlrc", 0o644, "PostgreSQL config"),
+    // Terminal
+    ("~/.ssh", 0o700, "SSH directory"),
 ];
 
 // Glob patterns for sensitive files (matched against filename only)
@@ -31,10 +51,19 @@ static SENSITIVE_PATTERNS: &[(&str, u32, &str)] = &[
     ("id_ed25519*", 0o600, "SSH Ed25519 private key"),
     ("id_ecdsa*", 0o600, "SSH ECDSA private key"),
     ("id_dsa*", 0o600, "SSH DSA private key"),
+    ("*_rsa", 0o600, "Named SSH RSA key"),
+    ("*_ed25519", 0o600, "Named SSH Ed25519 key"),
+    ("*_ecdsa", 0o600, "Named SSH ECDSA key"),
+    ("*_dsa", 0o600, "Named SSH DSA key"),
     ("*.pem", 0o600, "PEM private key"),
     ("*.key", 0o600, "Private key file"),
     ("*.gpg", 0o600, "GPG file"),
     ("*.asc", 0o600, "ASCII armored key"),
+    ("*.bashrc", 0o644, "Bash config backup"),
+    ("*.zshrc", 0o644, "Zsh config backup"),
+    ("*.profile", 0o644, "Shell profile backup"),
+    ("credentials*", 0o600, "Credentials file"),
+    ("*.token", 0o600, "Auth token file"),
 ];
 
 pub fn get_required_permission(path: &Path) -> Option<(u32, &'static str)> {
@@ -246,5 +275,56 @@ mod tests {
         assert!(glob_match("*.pem", "server.pem"));
         assert!(glob_match("*.pem", "cert.pem"));
         assert!(!glob_match("*.pem", "server.key"));
+    }
+
+    #[test]
+    fn test_get_required_permission_aws_credentials() {
+        std::env::set_var("HOME", "/home/user");
+        let path = Path::new("/home/user/.aws/credentials");
+        let result = get_required_permission(path);
+        assert!(result.is_some());
+        let (mode, desc) = result.unwrap();
+        assert_eq!(mode, 0o600);
+        assert!(desc.contains("AWS"));
+    }
+
+    #[test]
+    fn test_get_required_permission_git_credentials() {
+        std::env::set_var("HOME", "/home/user");
+        let path = Path::new("/home/user/.git-credentials");
+        let result = get_required_permission(path);
+        assert!(result.is_some());
+        let (mode, _) = result.unwrap();
+        assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn test_get_required_permission_xauthority() {
+        std::env::set_var("HOME", "/home/user");
+        let path = Path::new("/home/user/.Xauthority");
+        let result = get_required_permission(path);
+        assert!(result.is_some());
+        let (mode, _) = result.unwrap();
+        assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn test_get_required_permission_named_ssh_key() {
+        // *_ed25519 pattern
+        let path = Path::new("/some/path/github_ed25519");
+        let result = get_required_permission(path);
+        assert!(result.is_some());
+        let (mode, _) = result.unwrap();
+        assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn test_get_required_permission_token_file() {
+        // *.token pattern
+        let path = Path::new("/some/path/auth.token");
+        let result = get_required_permission(path);
+        assert!(result.is_some());
+        let (mode, _) = result.unwrap();
+        assert_eq!(mode, 0o600);
     }
 }
