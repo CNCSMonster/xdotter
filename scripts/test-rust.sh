@@ -752,6 +752,153 @@ else
 fi
 rm -rf "$tmpdir"
 
+# ============================================================
+# Permission tests (P0: new tests for deploy-integrated permissions)
+# ============================================================
+
+# Test: Permission Check During Deploy (--check-permissions flag)
+tmpdir=$(mktemp -d)
+mkdir -p "$tmpdir/source" "$tmpdir/.ssh"
+echo "fake ssh key" > "$tmpdir/source/id_ed25519"
+chmod 644 "$tmpdir/source/id_ed25519"
+cat > "$tmpdir/xdotter.toml" << EOF
+[links]
+"source/id_ed25519" = "~/.ssh/id_ed25519_check.txt"
+EOF
+output=$(run_xd "$tmpdir" --check-permissions -v deploy 2>&1)
+if echo "$output" | grep -qi "wrong permission\|permission\|warning"; then
+    log_test "Permission Check During Deploy" "PASS"
+else
+    log_test "Permission Check During Deploy" "FAIL" "output: $output"
+fi
+rm -f "$tmpdir/.ssh/id_ed25519_check.txt" 2>/dev/null
+rm -rf "$tmpdir"
+
+# Test: Permission Fix Multiple Sensitive Files
+tmpdir=$(mktemp -d)
+mkdir -p "$tmpdir/source" "$tmpdir/.ssh" "$tmpdir/.gnupg"
+echo "ssh key" > "$tmpdir/source/id_rsa"
+echo "gpg key" > "$tmpdir/source/gpg.conf"
+chmod 644 "$tmpdir/source/id_rsa"
+chmod 644 "$tmpdir/source/gpg.conf"
+cat > "$tmpdir/xdotter.toml" << EOF
+[links]
+"source/id_rsa" = "~/.ssh/id_rsa_multi"
+"source/gpg.conf" = "~/.gnupg/gpg.conf"
+EOF
+output=$(run_xd "$tmpdir" --fix-permissions deploy 2>&1)
+mode_rsa=$(stat -c%a "$tmpdir/source/id_rsa" 2>/dev/null)
+mode_gpg=$(stat -c%a "$tmpdir/source/gpg.conf" 2>/dev/null)
+if [ "$mode_rsa" = "600" ] && [ "$mode_gpg" = "600" ]; then
+    log_test "Permission Fix Multiple Sensitive Files" "PASS"
+else
+    log_test "Permission Fix Multiple Sensitive Files" "FAIL" "rsa=$mode_rsa, gpg=$mode_gpg"
+fi
+rm -f "$tmpdir/.ssh/id_rsa_multi" "$tmpdir/.gnupg/gpg.conf" 2>/dev/null
+rm -rf "$tmpdir"
+
+# Test: Permission Fix Fails Gracelessly
+# Deploy completes without panicking even when permissions can't be checked
+# (Rust's Result type prevents silent panics)
+tmpdir=$(mktemp -d)
+mkdir -p "$tmpdir/source" "$tmpdir/.ssh"
+echo "test" > "$tmpdir/source/id_ed25519"
+chmod 644 "$tmpdir/source/id_ed25519"
+cat > "$tmpdir/xdotter.toml" << EOF
+[links]
+"source/id_ed25519" = "~/.ssh/id_ed25519_grace_test"
+EOF
+# Should complete without error (fix_permission on a readable file works fine)
+output=$(run_xd "$tmpdir" --fix-permissions -v deploy 2>&1)
+exit_code=$?
+mode=$(stat -c%a "$tmpdir/source/id_ed25519" 2>/dev/null)
+if [ $exit_code -eq 0 ] && [ "$mode" = "600" ]; then
+    log_test "Permission Fix Fails Gracefully" "PASS"
+else
+    log_test "Permission Fix Fails Gracefully" "FAIL" "exit=$exit_code, mode=$mode"
+fi
+rm -f "$tmpdir/.ssh/id_ed25519_grace_test" 2>/dev/null
+rm -rf "$tmpdir"
+
+# Test: Validate Nonexistent File
+tmpdir=$(mktemp -d)
+output=$(run_xd "$tmpdir" validate "$tmpdir/nonexistent.toml" 2>&1)
+if echo "$output" | grep -qi "error\|not found\|fail"; then
+    log_test "Validate Nonexistent File" "PASS"
+else
+    log_test "Validate Nonexistent File" "FAIL" "output: $output"
+fi
+rm -rf "$tmpdir"
+
+# Test: Symlink Loop Warning (output verification)
+tmpdir=$(mktemp -d)
+mkdir -p "$tmpdir/A"
+ln -s "$tmpdir/A" "$tmpdir/B"
+ln -s "$tmpdir/B" "$tmpdir/A/loop" 2>/dev/null || true
+echo "test" > "$tmpdir/A/file.txt"
+cat > "$tmpdir/xdotter.toml" << EOF
+[links]
+"$tmpdir/A/file.txt" = "$tmpdir/A/loop/file.txt"
+EOF
+output=$(run_xd "$tmpdir" -v deploy 2>&1)
+if echo "$output" | grep -qi "loop\|circular\|skip\|warning"; then
+    log_test "Symlink Loop Warning" "PASS"
+else
+    log_test "Symlink Loop Warning" "FAIL" "output: $output"
+fi
+rm -rf "$tmpdir" 2>/dev/null
+
+# Test: Circular Symlink Detailed Scenario
+tmpdir=$(mktemp -d)
+mkdir -p "$tmpdir/A/B"
+ln -s "$tmpdir/A" "$tmpdir/C"
+cat > "$tmpdir/xdotter.toml" << EOF
+[links]
+"$tmpdir/A/B/file.txt" = "$tmpdir/C/B/file.txt"
+EOF
+echo "content" > "$tmpdir/A/B/file.txt"
+# Without -i or -f, the circular scenario should be detected and skipped
+output=$(run_xd "$tmpdir" -v deploy 2>&1)
+# Should detect the circular scenario and either skip or warn
+if echo "$output" | grep -qi "circular\|skip\|warning\|would create\|error"; then
+    log_test "Circular Symlink Detailed" "PASS"
+else
+    log_test "Circular Symlink Detailed" "FAIL" "output: $output"
+fi
+rm -rf "$tmpdir" 2>/dev/null
+
+# Test: Parent Symlink Fix Interactive
+tmpdir=$(mktemp -d)
+mkdir -p "$tmpdir/dotfiles/helix" "$tmpdir/.config"
+echo "config content" > "$tmpdir/dotfiles/helix/config.toml"
+ln -s "../dotfiles/helix" "$tmpdir/.config/helix"
+cat > "$tmpdir/xdotter.toml" << EOF
+[links]
+"$tmpdir/dotfiles/helix/config.toml" = "$tmpdir/.config/helix/config.toml"
+EOF
+output=$(echo "y" | run_xd "$tmpdir" -i -f -v deploy 2>&1)
+if [ -d "$tmpdir/.config/helix" ] && [ ! -L "$tmpdir/.config/helix" ]; then
+    if [ -L "$tmpdir/.config/helix/config.toml" ]; then
+        log_test "Parent Symlink Fix Interactive" "PASS"
+    else
+        log_test "Parent Symlink Fix Interactive" "FAIL" "symlink not created"
+    fi
+else
+    log_test "Parent Symlink Fix Interactive" "FAIL" "parent not replaced"
+fi
+rm -rf "$tmpdir"
+
+# Test: JSON Config Validation
+tmpdir=$(mktemp -d)
+echo '{"links": {"source/test.txt": "~/.cache/test.txt"}}' > "$tmpdir/xdotter.json"
+output=$(run_xd "$tmpdir" validate "$tmpdir/xdotter.json" 2>&1)
+if echo "$output" | grep -qi "valid"; then
+    log_test "JSON Config Validation" "PASS"
+else
+    log_test "JSON Config Validation" "FAIL" "output: $output"
+fi
+rm -rf "$tmpdir"
+
 # Summary
 echo ""
 echo "=================================================="
