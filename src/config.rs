@@ -10,9 +10,8 @@ pub struct Config {
 
 impl Config {
     pub fn from_toml(content: &str) -> Result<Self, String> {
-        let data: TomlData = toml::from_str(content)
-            .map_err(|e| format_toml_error(content, &e))?;
-        
+        let data: TomlData = toml::from_str(content).map_err(|e| format_toml_error(content, &e))?;
+
         Ok(Config {
             links: data.links.unwrap_or_default(),
             dependencies: data.dependencies.unwrap_or_default(),
@@ -20,9 +19,9 @@ impl Config {
     }
 
     pub fn from_json(content: &str) -> Result<Self, String> {
-        let data: JsonData = serde_json::from_str(content)
-            .map_err(|e| format_json_error(content, &e))?;
-        
+        let data: JsonData =
+            serde_json::from_str(content).map_err(|e| format_json_error(content, &e))?;
+
         Ok(Config {
             links: data.links.unwrap_or_default(),
             dependencies: data.dependencies.unwrap_or_default(),
@@ -61,14 +60,21 @@ pub fn detect_format(filepath: &Path) -> Option<&'static str> {
 }
 
 fn format_toml_error(content: &str, error: &toml::de::Error) -> String {
-    let line = error.span().map(|s| content[..s.start].lines().count() + 1).unwrap_or(1);
+    let line = error
+        .span()
+        .map(|s| content[..s.start].lines().count() + 1)
+        .unwrap_or(1);
     let lines: Vec<&str> = content.lines().collect();
     let error_line = lines.get(line.saturating_sub(1)).unwrap_or(&"");
     let prev_line = if line > 1 { lines.get(line - 2) } else { None };
-    let next_line = lines.get(line) ;
-    
-    let mut msg = format!("❌ TOML 语法错误\n\n错误：{} (第 {} 行)", error.message(), line);
-    
+    let next_line = lines.get(line);
+
+    let mut msg = format!(
+        "❌ TOML 语法错误\n\n错误：{} (第 {} 行)",
+        error.message(),
+        line
+    );
+
     if let Some(prev) = prev_line {
         msg.push_str(&format!("\n  {} | {}", line - 1, prev));
     }
@@ -76,13 +82,13 @@ fn format_toml_error(content: &str, error: &toml::de::Error) -> String {
     if let Some(next) = next_line {
         msg.push_str(&format!("\n  {} | {}", line + 1, next));
     }
-    
+
     // Add suggestion
     let error_msg = error.message().to_lowercase();
     if error_msg.contains("expected") || error_msg.contains("invalid") {
         msg.push_str("\n\n提示：检查语法，键名可能需要引号包裹");
     }
-    
+
     msg
 }
 
@@ -92,10 +98,13 @@ fn format_json_error(content: &str, error: &serde_json::Error) -> String {
     let lines: Vec<&str> = content.lines().collect();
     let error_line = lines.get(line.saturating_sub(1)).unwrap_or(&"");
     let prev_line = if line > 1 { lines.get(line - 2) } else { None };
-    let next_line = lines.get(line) ;
-    
-    let mut msg = format!("❌ JSON 语法错误\n\n错误：{} (第 {} 行，第 {} 列)", error, line, column);
-    
+    let next_line = lines.get(line);
+
+    let mut msg = format!(
+        "❌ JSON 语法错误\n\n错误：{} (第 {} 行，第 {} 列)",
+        error, line, column
+    );
+
     if let Some(prev) = prev_line {
         msg.push_str(&format!("\n  {} | {}", line - 1, prev));
     }
@@ -103,7 +112,7 @@ fn format_json_error(content: &str, error: &serde_json::Error) -> String {
     if let Some(next) = next_line {
         msg.push_str(&format!("\n  {} | {}", line + 1, next));
     }
-    
+
     // Add suggestion
     let error_msg = error.to_string().to_lowercase();
     if error_msg.contains("comma") {
@@ -111,7 +120,7 @@ fn format_json_error(content: &str, error: &serde_json::Error) -> String {
     } else if error_msg.contains("quote") {
         msg.push_str("\n\n提示：JSON 键名必须是字符串（用双引号包裹）");
     }
-    
+
     msg
 }
 

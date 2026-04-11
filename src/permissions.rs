@@ -42,7 +42,7 @@ pub fn get_required_permission(path: &Path) -> Option<(u32, &'static str)> {
     let home = std::env::var("HOME")
         .ok()
         .or_else(|| dirs::home_dir().map(|d| d.to_string_lossy().to_string()));
-    
+
     let tilde_path = if let Some(ref home) = home {
         let path_str = path.to_string_lossy();
         if path_str.starts_with(home.as_str()) {
@@ -53,48 +53,49 @@ pub fn get_required_permission(path: &Path) -> Option<(u32, &'static str)> {
     } else {
         path.to_string_lossy().to_string()
     };
-    
+
     // Direct match
     for (pattern, mode, desc) in SENSITIVE_PATHS {
         if tilde_path == *pattern {
             return Some((*mode, *desc));
         }
     }
-    
+
     // Pattern matching against filename
-    let filename = path.file_name()
+    let filename = path
+        .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
-    
+
     for (pattern, mode, desc) in SENSITIVE_PATTERNS {
         if glob_match(pattern, &filename) {
             return Some((*mode, *desc));
         }
     }
-    
+
     None
 }
 
 pub fn check_permission(path: &Path, required_mode: u32) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    
+
     if let Ok(metadata) = std::fs::metadata(path) {
         let current_mode = metadata.permissions().mode() & 0o7777;
         // Check if any extra bits are set
         (current_mode & !required_mode) == 0
     } else {
-        true  // Can't check, assume OK
+        true // Can't check, assume OK
     }
 }
 
 pub fn fix_permission(path: &Path, required_mode: u32) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    
+
     let mut perms = match std::fs::metadata(path) {
         Ok(m) => m.permissions(),
         Err(_) => return false,
     };
-    
+
     perms.set_mode(required_mode);
     std::fs::set_permissions(path, perms).is_ok()
 }
