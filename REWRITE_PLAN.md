@@ -87,17 +87,16 @@
 
 | Commit | Description | Tests Passing |
 |--------|-------------|---------------|
-| - | Initial Rust project setup | 0/58 |
-| - | CLI argument parsing | 5/58 |
-| - | Config parsing (TOML/JSON) | 11/58 |
-| - | Basic deploy | 19/58 |
-| - | Undeploy | 21/58 |
-| - | Dry run, force, verbose | 26/58 |
-| - | Validation command | 33/58 |
-| - | Shell completion | 38/58 |
-| - | Permission checking | 43/58 |
-| - | Symlink loop detection | 48/58 |
-| - | Edge cases, interactive | 58/58 |
+| ca30836 | Initial Rust project setup | 5/58 (CLI, config, help, version, new) |
+| 724481a | Basic deploy working | 8/58 (+ deploy basic, tilde expansion, multiple links) |
+| - | Undeploy | 10/58 |
+| - | Dry run, force, verbose | 15/58 |
+| - | Validation command | 22/58 |
+| - | Shell completion | 27/58 |
+| - | Permission checking | 32/58 |
+| - | Symlink loop detection | 37/58 |
+| - | Edge cases, interactive | 50/58 |
+| - | Parent symlink fix | 58/58 |
 
 ## Tech Stack
 

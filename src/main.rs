@@ -1,15 +1,19 @@
 mod cli;
 mod config;
+mod permissions;
+mod symlink;
 
 use clap::Parser;
 use clap::CommandFactory;
 use clap_complete::{generate, Shell as ClapShell};
 use cli::{Cli, Command};
 use config::{Config, detect_format, validate_toml, validate_json};
+use permissions::{get_required_permission, check_permission, fix_permission};
 use std::fs;
 use std::io;
-use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
+
+const VERSION: &str = "0.4.0";
 
 fn main() {
     let cli = Cli::parse();
@@ -18,7 +22,7 @@ fn main() {
         Command::Deploy => cmd_deploy(&cli),
         Command::Undeploy => cmd_undeploy(&cli),
         Command::CheckPermissions => cmd_check_permissions(&cli),
-        Command::Validate { files } => cmd_validate(&cli, &files.iter().map(|p| p.to_path_buf()).collect::<Vec<_>>()),
+        Command::Validate { files } => cmd_validate(&cli, files),
         Command::New => cmd_new(&cli),
         Command::Completion { shell } => cmd_completion(&cli, shell),
         Command::Version => cmd_version(&cli),
@@ -27,7 +31,7 @@ fn main() {
     match result {
         Ok(()) => std::process::exit(0),
         Err(e) => {
-            eprintln!("Error: {}", e);
+            log(&cli, "error", &e);
             std::process::exit(1);
         }
     }
@@ -39,23 +43,24 @@ fn log(cli: &Cli, level: &str, msg: &str) {
     }
     
     match level {
-        "info" => if cli.verbose || !cli.quiet { println!("{}", msg); },
-        "debug" => if cli.verbose { println!("[DEBUG] {}", msg); },
+        "info" => {
+            if cli.verbose || !cli.quiet {
+                println!("{}", msg);
+            }
+        }
+        "debug" => {
+            if cli.verbose {
+                println!("[DEBUG] {}", msg);
+            }
+        }
         "warning" => println!("\x1b[1;33m[WARNING] {}\x1b[0m", msg),
         "error" => eprintln!("\x1b[0;31m[ERROR] {}\x1b[0m", msg),
         _ => println!("{}", msg),
     }
 }
 
-fn cmd_help(_cli: &Cli) -> Result<(), String> {
-    let mut cmd = Cli::command();
-    let _ = cmd.print_help().map_err(|e| e.to_string())?;
-    println!();
-    Ok(())
-}
-
 fn cmd_version(cli: &Cli) -> Result<(), String> {
-    log(cli, "info", "0.4.0");
+    println!("{}", VERSION);
     Ok(())
 }
 
@@ -65,7 +70,7 @@ fn cmd_completion(_cli: &Cli, shell: &str) -> Result<(), String> {
         "bash" => ClapShell::Bash,
         "zsh" => ClapShell::Zsh,
         "fish" => ClapShell::Fish,
-        _ => return Err(format!("Unsupported shell: {}", shell)),
+        _ => return Err(format!("Unsupported shell: {}. Supported: bash, zsh, fish", shell)),
     };
     
     generate(clap_shell, &mut cmd, "xd", &mut io::stdout());
@@ -106,6 +111,52 @@ fn cmd_new(cli: &Cli) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_config_file(filepath: &Path) -> Result<(), String> {
+    let content = fs::read_to_string(filepath)
+        .map_err(|e| format!("Cannot read file: {}", e))?;
+    
+    match detect_format(filepath) {
+        Some("toml") => validate_toml(&content),
+        Some("json") => validate_json(&content),
+        _ => Err(format!("Unknown file format: {}", filepath.display())),
+    }
+}
+
+fn cmd_validate(cli: &Cli, files: &[PathBuf]) -> Result<(), String> {
+    if files.is_empty() {
+        let defaults = ["xdotter.toml", "xdotter.json"];
+        let mut found = false;
+        for f in &defaults {
+            let path = Path::new(f);
+            if path.exists() {
+                if let Err(e) = validate_config_file(path) {
+                    eprintln!("{}", e);
+                    return Err("Validation failed".to_string());
+                }
+                log(cli, "info", &format!("✓ {} is valid", f));
+                found = true;
+            }
+        }
+        if !found {
+            return Err("No default config file found (xdotter.toml or xdotter.json)".to_string());
+        }
+    } else {
+        for filepath in files {
+            if !filepath.exists() {
+                log(cli, "error", &format!("File not found: {}", filepath.display()));
+                return Err("Validation failed".to_string());
+            }
+            if let Err(e) = validate_config_file(filepath) {
+                eprintln!("{}", e);
+                return Err("Validation failed".to_string());
+            }
+            log(cli, "info", &format!("✓ {} is valid", filepath.display()));
+        }
+    }
+    
+    Ok(())
+}
+
 fn cmd_deploy(cli: &Cli) -> Result<(), String> {
     log(cli, "info", "Deploying...");
     
@@ -116,17 +167,18 @@ fn cmd_deploy(cli: &Cli) -> Result<(), String> {
     
     // Auto-validate unless --no-validate
     if !cli.no_validate {
-        if let Err(e) = validate_config(config_path) {
+        if let Err(e) = validate_config_file(config_path) {
             log(cli, "error", &e);
             return Err("Config validation failed".to_string());
         }
+        log(cli, "debug", "Config validation passed");
     }
     
     let content = fs::read_to_string(config_path)
         .map_err(|e| format!("Failed to read config: {}", e))?;
     
-    let format = detect_format(config_path).unwrap_or("toml");
-    let config = if format == "json" {
+    let fmt = detect_format(config_path).unwrap_or("toml");
+    let config = if fmt == "json" {
         Config::from_json(&content)?
     } else {
         Config::from_toml(&content)?
@@ -138,19 +190,32 @@ fn cmd_deploy(cli: &Cli) -> Result<(), String> {
     
     for (actual_path, link) in &config.links {
         log(cli, "info", &format!("deploy: {} -> {}", actual_path, link));
-        if let Err(e) = create_symlink(actual_path, link, cli) {
+        if let Err(e) = symlink::create_symlink(actual_path, link, cli) {
             log(cli, "error", &format!("failed to create link: {}", e));
             success = false;
         }
     }
     
+    // Process dependencies
+    let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
     for (dep_name, dep_path) in &config.dependencies {
         log(cli, "debug", &format!("dependency: {}, path: {}", dep_name, dep_path));
-        let dep_dir = std::env::current_dir().map_err(|e| e.to_string())?.join(dep_path);
+        let dep_dir = current_dir.join(dep_path);
         let dep_config = dep_dir.join("xdotter.toml");
         if dep_config.exists() {
-            // Recursive deploy (simplified)
             log(cli, "debug", &format!("entering {}", dep_dir.display()));
+            // Save and restore current directory
+            let prev_dir = current_dir.clone();
+            if let Err(e) = std::env::set_current_dir(&dep_dir) {
+                log(cli, "error", &format!("Cannot enter dependency dir: {}", e));
+                success = false;
+                continue;
+            }
+            if let Err(e) = cmd_deploy(cli) {
+                log(cli, "error", &format!("Dependency deploy failed: {}", e));
+                success = false;
+            }
+            let _ = std::env::set_current_dir(&prev_dir);
         }
     }
     
@@ -172,8 +237,8 @@ fn cmd_undeploy(cli: &Cli) -> Result<(), String> {
     let content = fs::read_to_string(config_path)
         .map_err(|e| format!("Failed to read config: {}", e))?;
     
-    let format = detect_format(config_path).unwrap_or("toml");
-    let config = if format == "json" {
+    let fmt = detect_format(config_path).unwrap_or("toml");
+    let config = if fmt == "json" {
         Config::from_json(&content)?
     } else {
         Config::from_toml(&content)?
@@ -181,7 +246,7 @@ fn cmd_undeploy(cli: &Cli) -> Result<(), String> {
     
     let mut success = true;
     
-    for (link, _actual_path) in &config.links {
+    for (_actual_path, link) in &config.links {
         let link_path = expand_path(link);
         if link_path.is_symlink() {
             if cli.dry_run {
@@ -193,6 +258,7 @@ fn cmd_undeploy(cli: &Cli) -> Result<(), String> {
                     let mut input = String::new();
                     io::stdin().read_line(&mut input).ok();
                     if input.trim().to_lowercase() != "y" {
+                        log(cli, "debug", "Skipping");
                         continue;
                     }
                 }
@@ -204,7 +270,9 @@ fn cmd_undeploy(cli: &Cli) -> Result<(), String> {
             }
         } else if link_path.exists() {
             log(cli, "warning", &format!("Target is not a symlink: {}", link_path.display()));
-            success = false;
+            if !cli.force {
+                success = false;
+            }
         } else {
             log(cli, "debug", &format!("Link does not exist: {}", link_path.display()));
         }
@@ -219,151 +287,70 @@ fn cmd_undeploy(cli: &Cli) -> Result<(), String> {
 
 fn cmd_check_permissions(cli: &Cli) -> Result<(), String> {
     log(cli, "info", "Checking permissions...");
-    // Simplified - full implementation would check all sensitive paths
-    Ok(())
-}
-
-fn cmd_validate(cli: &Cli, files: &[PathBuf]) -> Result<(), String> {
-    if files.is_empty() {
-        // Validate default files
-        let defaults = ["xdotter.toml", "xdotter.json"];
-        let mut found = false;
-        for f in &defaults {
-            let path = Path::new(f);
-            if path.exists() {
-                if let Err(e) = validate_config(path) {
-                    log(cli, "error", &e);
-                    return Err("Validation failed".to_string());
-                }
-                log(cli, "info", &format!("✓ {} is valid", f));
-                found = true;
-            }
-        }
-        if !found {
-            return Err("No default config file found".to_string());
-        }
+    
+    let config_path = Path::new("xdotter.toml");
+    if !config_path.exists() {
+        return Err(format!("Config file not found: {}", config_path.display()));
+    }
+    
+    let content = fs::read_to_string(config_path)
+        .map_err(|e| format!("Failed to read config: {}", e))?;
+    
+    let fmt = detect_format(config_path).unwrap_or("toml");
+    let config = if fmt == "json" {
+        Config::from_json(&content)?
     } else {
-        for filepath in files {
-            if !filepath.exists() {
-                log(cli, "error", &format!("File not found: {}", filepath.display()));
-                return Err("Validation failed".to_string());
-            }
-            if let Err(e) = validate_config(filepath) {
-                log(cli, "error", &e);
-                return Err("Validation failed".to_string());
-            }
-            log(cli, "info", &format!("✓ {} is valid", filepath.display()));
+        Config::from_toml(&content)?
+    };
+    
+    let mut has_issues = false;
+    let fix_mode = cli.fix_permissions;
+    
+    for (_actual_path, link) in &config.links {
+        let link_path = expand_path(link);
+        if !link_path.is_symlink() {
+            continue;
         }
-    }
-    
-    Ok(())
-}
-
-fn validate_config(filepath: &Path) -> Result<(), String> {
-    let content = fs::read_to_string(filepath)
-        .map_err(|e| format!("Cannot read file: {}", e))?;
-    
-    match detect_format(filepath) {
-        Some("toml") => validate_toml(&content),
-        Some("json") => validate_json(&content),
-        _ => Err(format!("Unknown file format: {}", filepath.display())),
-    }
-}
-
-fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), String> {
-    let actual = expand_path(actual_path).canonicalize()
-        .map_err(|e| format!("Source path does not exist: {}: {}", actual_path, e))?;
-    
-    let link_path = expand_path(link);
-    
-    // Check if parent directory is a symlink
-    let link_parent = link_path.parent().ok_or("Invalid link path")?;
-    if link_parent.is_symlink() && !actual.is_dir() {
-        if let Some(parent_target) = read_symlink_target(link_parent) {
-            let parent_target_resolved = expand_path(&parent_target);
-            if actual.starts_with(&parent_target_resolved) {
-                // Parent symlink issue - fix with --force or warn
-                if cli.force {
-                    log(cli, "info", &format!("Removing parent symlink {}", link_parent.display()));
-                    fs::remove_file(link_parent).map_err(|e| e.to_string())?;
-                    fs::create_dir_all(link_parent).map_err(|e| e.to_string())?;
-                } else if cli.interactive {
-                    log(cli, "warning", &format!("Parent directory {} is a symlink to {}", 
-                        link_parent.display(), parent_target_resolved.display()));
-                    print!("Remove {} and create real directory? [y/n] ", link_parent.display());
-                    io::Write::flush(&mut io::stdout()).ok();
-                    let mut input = String::new();
-                    io::stdin().read_line(&mut input).ok();
-                    if input.trim().to_lowercase() == "y" {
-                        fs::remove_file(link_parent).map_err(|e| e.to_string())?;
-                        fs::create_dir_all(link_parent).map_err(|e| e.to_string())?;
-                    } else {
-                        return Err("Would overwrite actual file (parent is symlink)".to_string());
+        
+        // Resolve symlink to get actual file
+        if let Ok(resolved) = link_path.canonicalize() {
+            if let Some((required_mode, description)) = get_required_permission(&link_path) {
+                let is_correct = check_permission(&resolved, required_mode);
+                if is_correct {
+                    if !cli.quiet {
+                        println!("\x1b[0;32m✓\x1b[0m {}: {} (permission: {:03o})", 
+                            description, link_path.display(), required_mode);
                     }
                 } else {
-                    log(cli, "warning", &format!("Parent directory {} is a symlink to {}", 
-                        link_parent.display(), parent_target_resolved.display()));
-                    return Err("Would overwrite actual file (parent is symlink)".to_string());
+                    if fix_mode {
+                        if cli.dry_run {
+                            log(cli, "info", &format!("Would fix permission for {} to {:03o}", 
+                                link_path.display(), required_mode));
+                        } else {
+                            if fix_permission(&resolved, required_mode) {
+                                log(cli, "info", &format!("Fixed permission for {} to {:03o}", 
+                                    link_path.display(), required_mode));
+                            } else {
+                                log(cli, "error", &format!("Failed to fix permission for {}", 
+                                    link_path.display()));
+                                has_issues = true;
+                            }
+                        }
+                    } else {
+                        log(cli, "warning", &format!("{}: {} has wrong permission", 
+                            description, link_path.display()));
+                        has_issues = true;
+                    }
                 }
             }
         }
     }
     
-    // Check if link already exists
-    if link_path.exists() || link_path.is_symlink() {
-        if link_path.is_symlink() {
-            if let Some(existing) = read_symlink_target(&link_path) {
-                let existing_resolved = expand_path(&existing);
-                if existing_resolved == actual {
-                    log(cli, "debug", "Symlink already exists, skipping");
-                    return Ok(());
-                }
-            }
-        }
-        
-        if cli.interactive {
-            print!("Link {} exists, remove it? [y/n] ", link_path.display());
-            io::Write::flush(&mut io::stdout()).ok();
-            let mut input = String::new();
-            io::stdin().read_line(&mut input).ok();
-            if input.trim().to_lowercase() != "y" {
-                return Ok(());
-            }
-        }
-        
-        if !cli.force && !cli.interactive {
-            return Err(format!("Path exists, use --force or --interactive to overwrite: {}", link_path.display()));
-        }
-        
-        if cli.dry_run {
-            log(cli, "debug", &format!("Would remove {}", link_path.display()));
-        } else {
-            log(cli, "debug", &format!("Removing {}", link_path.display()));
-            if link_path.is_dir() && !link_path.is_symlink() {
-                fs::remove_dir_all(&link_path).map_err(|e| e.to_string())?;
-            } else {
-                fs::remove_file(&link_path).map_err(|e| e.to_string())?;
-            }
-        }
-    }
-    
-    // Create symlink
-    if cli.dry_run {
-        log(cli, "info", &format!("Would create symlink: {} -> {}", link_path.display(), actual.display()));
+    if has_issues && !fix_mode {
+        Err("Permission issues found. Use --fix-permissions to fix them.".to_string())
     } else {
-        // Create parent directories if needed
-        if let Some(parent) = link_path.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent).map_err(|e| format!("Failed to create parent directory: {}", e))?;
-            }
-        }
-        
-        unix_fs::symlink(&actual, &link_path)
-            .map_err(|e| format!("Failed to create symlink: {}", e))?;
-        log(cli, "debug", &format!("Created symlink: {} -> {}", link_path.display(), actual.display()));
+        Ok(())
     }
-    
-    Ok(())
 }
 
 fn expand_path(path: &str) -> PathBuf {
@@ -376,8 +363,4 @@ fn expand_path(path: &str) -> PathBuf {
         return home.join(stripped);
     }
     PathBuf::from(path)
-}
-
-fn read_symlink_target(path: &Path) -> Option<String> {
-    std::fs::read_link(path).ok().map(|p| p.to_string_lossy().to_string())
 }
