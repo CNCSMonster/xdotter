@@ -3,6 +3,7 @@ use crate::config::{detect_format, validate_toml, Config};
 use crate::expand_path;
 use crate::permissions::{check_permission, fix_permission, get_required_permission};
 use crate::symlink;
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -38,7 +39,7 @@ pub fn log(cli: &Cli, level: &str, msg: &str) {
 
 pub fn dispatch(cli: &Cli) -> Result<(), String> {
     match cli.command.as_ref().unwrap_or(&Command::Deploy) {
-        Command::Deploy => cmd_deploy(cli),
+        Command::Deploy => cmd_deploy(cli, &mut HashSet::new()),
         Command::Undeploy => cmd_undeploy(cli),
         Command::Status => cmd_status(cli),
         Command::Validate { files } => cmd_validate(cli, files),
@@ -268,7 +269,7 @@ fn cmd_validate(cli: &Cli, files: &[PathBuf]) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_deploy(cli: &Cli) -> Result<(), String> {
+fn cmd_deploy(cli: &Cli, visited: &mut HashSet<PathBuf>) -> Result<(), String> {
     log(cli, "info", "Deploying...");
 
     let config_path = Path::new("xdotter.toml");
@@ -296,10 +297,40 @@ fn cmd_deploy(cli: &Cli) -> Result<(), String> {
         &format!("Deploying from {}", config_path.display()),
     );
 
+    // P0: Detect dependency cycle using canonical path
+    let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
+    let canon_dir = current_dir.canonicalize().map_err(|e| e.to_string())?;
+    if !visited.insert(canon_dir.clone()) {
+        return Err(format!(
+            "Dependency cycle detected: {} is already being processed",
+            canon_dir.display()
+        ));
+    }
+
     let mut success = true;
 
     for (actual_path, link) in &config.links {
         log(cli, "info", &format!("deploy: {} -> {}", actual_path, link));
+
+        // P1: Check if source file is a symlink and refuse to fix permissions on it
+        let src_path = expand_path(actual_path);
+        // Handle both absolute and relative paths
+        let src_check = if src_path.is_relative() {
+            // For relative paths, resolve from current directory
+            std::env::current_dir()
+                .ok()
+                .map(|cwd| cwd.join(&src_path))
+                .unwrap_or_else(|| src_path.clone())
+        } else {
+            src_path.clone()
+        };
+        if src_check.is_symlink() {
+            return Err(format!(
+                "Source file {} is a symlink. Permission fix refused to avoid modifying unintended files. Please resolve the symlink in your dotfile repository.",
+                actual_path
+            ));
+        }
+
         if let Err(e) = symlink::create_symlink(actual_path, link, cli) {
             log(cli, "error", &format!("failed to create link: {}", e));
             success = false;
@@ -366,29 +397,33 @@ fn cmd_deploy(cli: &Cli) -> Result<(), String> {
     }
 
     // Process dependencies
-    let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
     for (dep_name, dep_path) in &config.dependencies {
         log(
             cli,
             "debug",
             &format!("dependency: {}, path: {}", dep_name, dep_path),
         );
-        let dep_dir = current_dir.join(dep_path);
+        let dep_dir = canon_dir.join(dep_path);
         let dep_config = dep_dir.join("xdotter.toml");
         if dep_config.exists() {
             log(cli, "debug", &format!("entering {}", dep_dir.display()));
             // Save and restore current directory
-            let prev_dir = current_dir.clone();
             if let Err(e) = std::env::set_current_dir(&dep_dir) {
                 log(cli, "error", &format!("Cannot enter dependency dir: {}", e));
                 success = false;
                 continue;
             }
-            if let Err(e) = cmd_deploy(cli) {
+            if let Err(e) = cmd_deploy(cli, visited) {
+                let _ = std::env::set_current_dir(&canon_dir);
+                // If the error is a cycle, propagate it up immediately
+                if e.contains("Dependency cycle detected") {
+                    return Err(e);
+                }
                 log(cli, "error", &format!("Dependency deploy failed: {}", e));
                 success = false;
+            } else {
+                let _ = std::env::set_current_dir(&canon_dir);
             }
-            let _ = std::env::set_current_dir(&prev_dir);
         }
     }
 
@@ -466,5 +501,186 @@ fn cmd_undeploy(cli: &Cli) -> Result<(), String> {
         Ok(())
     } else {
         Err("Some links failed to undeploy".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Cli;
+    use std::os::unix::fs as unix_fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn test_dir(name: &str) -> PathBuf {
+        let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("xd_cmd_{}_{}_{}", name, std::process::id(), id));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn cleanup(dir: &Path) {
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    fn make_cli() -> Cli {
+        Cli {
+            command: None,
+            verbose: false,
+            quiet: true,
+            dry_run: false,
+            interactive: false,
+            force: false,
+            check_permissions: false,
+            fix_permissions: false,
+            no_validate: true,
+        }
+    }
+
+    // ============================================================
+    // P0: Dependency cycle detection tests
+    // ============================================================
+
+    #[test]
+    fn test_deploy_detects_cycle() {
+        let dir = test_dir("cycle");
+        let a = dir.join("a");
+        let b = dir.join("b");
+        fs::create_dir_all(&a).unwrap();
+        fs::create_dir_all(&b).unwrap();
+
+        // a depends on b, b depends on a → cycle
+        fs::write(
+            a.join("xdotter.toml"),
+            r#"
+[links]
+
+[dependencies]
+"b" = "../b"
+"#,
+        )
+        .unwrap();
+        fs::write(
+            b.join("xdotter.toml"),
+            r#"
+[links]
+
+[dependencies]
+"a" = "../a"
+"#,
+        )
+        .unwrap();
+
+        let cli = make_cli();
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&a).unwrap();
+        let mut visited = HashSet::new();
+        let result = cmd_deploy(&cli, &mut visited);
+        std::env::set_current_dir(&prev).unwrap();
+
+        let err_msg = result.expect_err("Should detect cycle");
+        eprintln!("Actual error: {}", err_msg);
+        assert!(
+            err_msg.contains("Dependency cycle detected") || err_msg.contains("cycle"),
+            "Error should mention cycle: {}",
+            err_msg
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn test_deploy_no_cycle_linear() {
+        let dir = test_dir("linear");
+        let a = dir.join("a");
+        let b = dir.join("b");
+        fs::create_dir_all(&a).unwrap();
+        fs::create_dir_all(&b).unwrap();
+
+        // a depends on b, but b does NOT depend on a → no cycle
+        fs::write(
+            a.join("xdotter.toml"),
+            r#"
+[links]
+
+[dependencies]
+"b" = "../b"
+"#,
+        )
+        .unwrap();
+        fs::write(
+            b.join("xdotter.toml"),
+            r#"
+[links]
+"#,
+        )
+        .unwrap();
+
+        let cli = make_cli();
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&a).unwrap();
+        let mut visited = HashSet::new();
+        let result = cmd_deploy(&cli, &mut visited);
+        std::env::set_current_dir(&prev).unwrap();
+
+        // Should succeed (no cycle)
+        assert!(result.is_ok(), "Linear dependency should work: {:?}", result);
+
+        cleanup(&dir);
+    }
+
+    // ============================================================
+    // P1: Symlink source file rejection tests
+    // ============================================================
+
+    #[test]
+    fn test_deploy_rejects_symlink_source() {
+        let dir = test_dir("symlink_src");
+        let real_file = dir.join("real.txt");
+        let link_file = dir.join("link.txt");
+        fs::write(&real_file, "content").unwrap();
+        unix_fs::symlink(&real_file, &link_file).unwrap();
+
+        // Config uses symlink as source
+        let target = format!("/tmp/xd_test_target_{}.txt", std::process::id());
+        fs::write(
+            dir.join("xdotter.toml"),
+            format!(
+                r#"
+[links]
+"link.txt" = "{}"
+"#,
+                target
+            ),
+        )
+        .unwrap();
+
+        // Make sure we set HOME so expand_path works correctly
+        std::env::set_var("HOME", "/tmp");
+
+        let cli = Cli {
+            quiet: false,
+            no_validate: true,
+            ..make_cli()
+        };
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let mut visited = HashSet::new();
+        let result = cmd_deploy(&cli, &mut visited);
+        std::env::set_current_dir(&prev).unwrap();
+
+        let err_msg = result.expect_err("Should reject symlink source");
+        eprintln!("Actual error: {}", err_msg);
+        assert!(
+            err_msg.contains("Source file") && err_msg.contains("symlink"),
+            "Error should mention source symlink: {}",
+            err_msg
+        );
+
+        // Cleanup
+        let _ = fs::remove_file(&target);
+        cleanup(&dir);
     }
 }
