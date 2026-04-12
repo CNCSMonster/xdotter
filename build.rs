@@ -4,7 +4,7 @@ use std::env;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "xd", version = "0.4.0", about = "A simple dotfile manager")]
+#[command(name = "xd", version = env!("CARGO_PKG_VERSION"), about = "A simple dotfile manager")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,

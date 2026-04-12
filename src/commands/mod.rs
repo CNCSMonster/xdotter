@@ -7,7 +7,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-const VERSION: &str = "0.4.0";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // Completion scripts are generated at build time into OUT_DIR
 const BASH_COMPLETION: &str = include_str!(concat!(env!("OUT_DIR"), "/xd.bash"));

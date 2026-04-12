@@ -45,7 +45,6 @@ static SENSITIVE_PATHS: &[(&str, u32, &str)] = &[
     ("~/.my.cnf", 0o600, "MySQL config"),
     ("~/.psqlrc", 0o644, "PostgreSQL config"),
     // Terminal
-    ("~/.ssh", 0o700, "SSH directory"),
 ];
 
 // Glob patterns for sensitive files (matched against filename only)

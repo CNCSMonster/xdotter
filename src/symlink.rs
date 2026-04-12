@@ -161,8 +161,25 @@ pub fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), St
                         if cli.force {
                             log(
                                 cli,
+                                "warning",
+                                &format!(
+                                    "RISKY: Parent directory {} is a symlink to {}",
+                                    link_parent.display(),
+                                    parent_target_resolved.display()
+                                ),
+                            );
+                            log(
+                                cli,
                                 "info",
-                                &format!("Removing parent symlink {}", link_parent.display()),
+                                &format!(
+                                    "Action: Removing parent symlink {} and creating real directory",
+                                    link_parent.display()
+                                ),
+                            );
+                            log(
+                                cli,
+                                "info",
+                                "Note: The symlink target's contents will NOT be deleted, only the symlink itself is removed"
                             );
                             fs::remove_file(link_parent).map_err(|e| e.to_string())?;
                             fs::create_dir_all(link_parent).map_err(|e| e.to_string())?;

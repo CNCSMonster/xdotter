@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "xd", version = "0.4.0", about = "A simple dotfile manager")]
+#[command(name = "xd", version = env!("CARGO_PKG_VERSION"), about = "A simple dotfile manager")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
