@@ -109,7 +109,10 @@ fn validate_config_file(filepath: &Path) -> Result<(), String> {
 
     match detect_format(filepath) {
         Some("toml") => validate_toml(&content),
-        _ => Err(format!("Unknown file format: {}. Only TOML is supported.", filepath.display())),
+        _ => Err(format!(
+            "Unknown file format: {}. Only TOML is supported.",
+            filepath.display()
+        )),
     }
 }
 
@@ -515,7 +518,8 @@ mod tests {
 
     fn test_dir(name: &str) -> PathBuf {
         let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!("xd_cmd_{}_{}_{}", name, std::process::id(), id));
+        let dir =
+            std::env::temp_dir().join(format!("xd_cmd_{}_{}_{}", name, std::process::id(), id));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -523,6 +527,25 @@ mod tests {
 
     fn cleanup(dir: &Path) {
         let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Set a unique HOME for this test to avoid env race conditions.
+    /// Returns the previous HOME value (if any) so it can be restored.
+    fn set_unique_home() -> Option<String> {
+        let old = std::env::var("HOME").ok();
+        let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let home = std::env::temp_dir().join(format!("xd_home_{}_{}", std::process::id(), id));
+        let _ = fs::create_dir_all(&home);
+        std::env::set_var("HOME", &home);
+        old
+    }
+
+    fn restore_home(old: Option<String>) {
+        if let Some(v) = old {
+            std::env::set_var("HOME", &v);
+        } else {
+            std::env::remove_var("HOME");
+        }
     }
 
     fn make_cli() -> Cli {
@@ -575,10 +598,12 @@ mod tests {
 
         let cli = make_cli();
         let prev = std::env::current_dir().unwrap();
+        let _old_home = set_unique_home();
         std::env::set_current_dir(&a).unwrap();
         let mut visited = HashSet::new();
         let result = cmd_deploy(&cli, &mut visited);
         std::env::set_current_dir(&prev).unwrap();
+        restore_home(_old_home);
 
         let err_msg = result.expect_err("Should detect cycle");
         eprintln!("Actual error: {}", err_msg);
@@ -620,13 +645,19 @@ mod tests {
 
         let cli = make_cli();
         let prev = std::env::current_dir().unwrap();
+        let _old_home = set_unique_home();
         std::env::set_current_dir(&a).unwrap();
         let mut visited = HashSet::new();
         let result = cmd_deploy(&cli, &mut visited);
         std::env::set_current_dir(&prev).unwrap();
+        restore_home(_old_home);
 
         // Should succeed (no cycle)
-        assert!(result.is_ok(), "Linear dependency should work: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Linear dependency should work: {:?}",
+            result
+        );
 
         cleanup(&dir);
     }
@@ -657,19 +688,18 @@ mod tests {
         )
         .unwrap();
 
-        // Make sure we set HOME so expand_path works correctly
-        std::env::set_var("HOME", "/tmp");
-
         let cli = Cli {
             quiet: false,
             no_validate: true,
             ..make_cli()
         };
         let prev = std::env::current_dir().unwrap();
+        let _old_home = set_unique_home();
         std::env::set_current_dir(&dir).unwrap();
         let mut visited = HashSet::new();
         let result = cmd_deploy(&cli, &mut visited);
         std::env::set_current_dir(&prev).unwrap();
+        restore_home(_old_home);
 
         let err_msg = result.expect_err("Should reject symlink source");
         eprintln!("Actual error: {}", err_msg);

@@ -27,8 +27,7 @@ struct TomlData {
 }
 
 pub fn validate_toml(content: &str) -> Result<(), String> {
-    let _: TomlData =
-        basic_toml::from_str(content).map_err(|e| format_toml_error(content, &e))?;
+    let _: TomlData = basic_toml::from_str(content).map_err(|e| format_toml_error(content, &e))?;
     Ok(())
 }
 
@@ -46,10 +45,7 @@ fn format_toml_error(content: &str, error: &basic_toml::Error) -> String {
     let prev_line = if line > 1 { lines.get(line - 2) } else { None };
     let next_line = lines.get(line);
 
-    let mut msg = format!(
-        "❌ TOML 语法错误\n\n错误：{} (第 {} 行)",
-        error, line
-    );
+    let mut msg = format!("❌ TOML 语法错误\n\n错误：{} (第 {} 行)", error, line);
 
     if let Some(prev) = prev_line {
         msg.push_str(&format!("\n  {} | {}", line - 1, prev));
