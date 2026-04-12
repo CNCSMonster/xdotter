@@ -511,6 +511,7 @@ fn cmd_undeploy(cli: &Cli) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::Cli;
+    #[cfg(unix)]
     use std::os::unix::fs as unix_fs;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -667,6 +668,7 @@ mod tests {
     // ============================================================
 
     #[test]
+    #[cfg(unix)]
     fn test_deploy_rejects_symlink_source() {
         let dir = test_dir("symlink_src");
         let real_file = dir.join("real.txt");

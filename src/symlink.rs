@@ -3,8 +3,10 @@ use crate::expand_path;
 use crate::Cli;
 use std::fs;
 use std::io;
-use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
+
+#[cfg(unix)]
+use std::os::unix::fs as unix_fs;
 
 /// Detect circular symlink scenario:
 /// Creating symlink at A/B pointing to C/B, when C is already a symlink to A.
@@ -394,7 +396,7 @@ pub fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), St
             }
         }
 
-        unix_fs::symlink(&actual, &link_path)
+        create_symlink_impl(&actual, &link_path)
             .map_err(|e| format!("Failed to create symlink: {}", e))?;
         log(
             cli,
@@ -410,9 +412,24 @@ pub fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), St
     Ok(())
 }
 
+#[cfg(unix)]
+fn create_symlink_impl(actual: &Path, link_path: &Path) -> std::io::Result<()> {
+    unix_fs::symlink(actual, link_path)
+}
+
+#[cfg(windows)]
+fn create_symlink_impl(actual: &Path, link_path: &Path) -> std::io::Result<()> {
+    if actual.is_dir() {
+        std::os::windows::fs::symlink_dir(actual, link_path)
+    } else {
+        std::os::windows::fs::symlink_file(actual, link_path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs as unix_fs;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -497,6 +514,8 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    #[cfg(unix)]
     fn test_no_loop_through_symlink() {
         // .config -> dotfiles/.config (symlink)
         // Creating .config/file.txt -> dotfiles/.config/file.txt (real file)
@@ -533,6 +552,7 @@ mod tests {
     // ============================================================
 
     #[test]
+    #[cfg(unix)]
     fn test_detect_circular_scenario() {
         let dir = tmpdir("circular_yes");
 
@@ -582,6 +602,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_detect_circular_direct_parent() {
         let dir = tmpdir("circular_direct");
 

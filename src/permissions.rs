@@ -109,27 +109,39 @@ pub fn get_required_permission(path: &Path) -> Option<(u32, &'static str)> {
 }
 
 pub fn check_permission(path: &Path, required_mode: u32) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-
-    if let Ok(metadata) = std::fs::metadata(path) {
-        let current_mode = metadata.permissions().mode() & 0o7777;
-        // Check if any extra bits are set
-        (current_mode & !required_mode) == 0
-    } else {
-        true // Can't check, assume OK
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(metadata) = std::fs::metadata(path) {
+            let current_mode = metadata.permissions().mode() & 0o7777;
+            (current_mode & !required_mode) == 0
+        } else {
+            true
+        }
+    }
+    #[cfg(windows)]
+    {
+        let _ = (path, required_mode);
+        true
     }
 }
 
 pub fn fix_permission(path: &Path, required_mode: u32) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut perms = match std::fs::metadata(path) {
-        Ok(m) => m.permissions(),
-        Err(_) => return false,
-    };
-
-    perms.set_mode(required_mode);
-    std::fs::set_permissions(path, perms).is_ok()
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = match std::fs::metadata(path) {
+            Ok(m) => m.permissions(),
+            Err(_) => return false,
+        };
+        perms.set_mode(required_mode);
+        std::fs::set_permissions(path, perms).is_ok()
+    }
+    #[cfg(windows)]
+    {
+        let _ = (path, required_mode);
+        true
+    }
 }
 
 /// Simple glob matching (supports only * suffix)
