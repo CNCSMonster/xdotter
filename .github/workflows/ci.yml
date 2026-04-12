@@ -58,7 +58,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
-      - run: cargo test --no-fail-fast
+      - run: cargo test --no-fail-fast -- --test-threads=1
 
   rust-e2e-linux:
     name: Rust E2E Tests (Linux)
@@ -116,7 +116,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
-      - run: cargo test --no-fail-fast
+      - run: cargo test --no-fail-fast -- --test-threads=1
 
   rust-e2e-macos:
     name: Rust E2E Tests (macOS)
@@ -174,7 +174,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
-      - run: cargo test --no-fail-fast
+      - run: cargo test --no-fail-fast -- --test-threads=1
 
   rust-build-windows:
     name: Rust Build (Windows)
