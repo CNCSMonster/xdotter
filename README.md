@@ -1,27 +1,29 @@
 # xdotter: a simple dotfile manager
 
-A **zero-dependency**, **single-file** dotfile manager written in Python. No build tools, no package managers—just download and run.
+A **zero-dependency**, **single-binary** dotfile manager written in Rust. No runtime dependencies, no package managers—just download and run.
 
-**Now with robust TOML parsing powered by [tomli](https://github.com/hukkin/tomli)!**
+**Binary size: ~683KB** (release, optimized with LTO and stripping)
 
 ## Features
 
-- ✅ **Zero dependencies** - Uses Python standard library + vendored tomli
-- ✅ **Single file** - Easy to distribute and understand (~55KB .pyz)
-- ✅ **Cross-platform** - Works on Linux, macOS, and Windows (with Python)
-- ✅ **No installation required** - Run directly or install with one command
+- ✅ **Zero runtime dependencies** - Single static binary, no external libraries needed
+- ✅ **Single binary** - Easy to distribute (~683KB optimized release build)
+- ✅ **Cross-platform** - Works on Linux and macOS (Windows support planned)
+- ✅ **No installation required** - Download and run immediately
 - ✅ **Fast & Simple** - Minimal overhead, easy to configure
-- ✅ **Robust TOML parsing** - Full TOML v1.0 compliance via embedded tomli
+- ✅ **Robust TOML parsing** - Full TOML v1.0 compliance via `basic-toml`
 - ✅ **Permission checking** - Auto-detect and fix permissions for sensitive files
+- ✅ **Symlink safety** - Loop detection, circular symlink detection, conflict resolution
+- ✅ **Shell completion** - Auto-generated completion for bash, zsh, fish
 
 ## Quick Start
 
 ```bash
 # Download (auto-detects authenticated gh, falls back to curl)
 if command -v gh &> /dev/null && gh auth status &> /dev/null 2>&1; then
-    gh release download --repo cncsmonster/xdotter --pattern xd.pyz --output ~/.local/bin/xd
+    gh release download --repo cncsmonster/xdotter --pattern 'xd' --output ~/.local/bin/xd
 else
-    curl -L https://github.com/cncsmonster/xdotter/releases/latest/download/xd.pyz -o ~/.local/bin/xd
+    curl -L https://github.com/cncsmonster/xdotter/releases/latest/download/xd -o ~/.local/bin/xd
 fi
 
 # Make executable
@@ -38,7 +40,8 @@ xd --help
 ```bash
 git clone https://github.com/cncsmonster/xdotter.git
 cd xdotter
-python3 xd.py --help
+cargo build --release
+./target/release/xd --help
 ```
 
 ## Usage
@@ -72,10 +75,10 @@ xd undeploy -i
 |---------|-------------|
 | `deploy` | Deploy dotfiles (default) |
 | `undeploy` | Remove deployed dotfiles |
-| `check-permissions` | Check/fix permissions for deployed files |
+| `status` | Show deployment status |
 | `validate` | Validate configuration file syntax |
 | `new` | Create a new `xdotter.toml` template |
-| `help` | Print help message |
+| `completion` | Generate shell completion scripts |
 | `version` | Print version |
 
 ### Options
@@ -87,8 +90,8 @@ xd undeploy -i
 | `-n, --dry-run` | Show what would be done without making changes |
 | `-i, --interactive` | Ask for confirmation when unsure |
 | `-f, --force` | Force overwrite existing files |
-| `--check-permissions` | Check permissions for sensitive files (SSH, GPG, etc.) |
-| `--fix-permissions` | Fix permissions for sensitive files |
+| `--check-permissions` | Check permissions for sensitive files during deploy |
+| `--fix-permissions` | Fix permissions for sensitive files during deploy |
 | `--no-validate` | Skip config syntax validation during deploy |
 
 ### Permission Checking
@@ -104,13 +107,9 @@ xd deploy --fix-permissions
 
 # Dry-run to see what would be fixed
 xd deploy --fix-permissions -n
-
-# Check permissions for already deployed files
-xd check-permissions
-
-# Fix permissions for deployed files
-xd check-permissions --fix-permissions
 ```
+
+**Note:** Permission checking is only available as flags during the `deploy` command. It checks source file permissions before creating symlinks.
 
 ### Configuration Validation
 
@@ -122,18 +121,13 @@ xd validate
 
 # Validate specific files
 xd validate myconfig.toml
-xd validate config1.toml config2.json
+xd validate config1.toml config2.toml
 
 # Skip validation during deploy (emergency)
 xd deploy --no-validate
 ```
 
-**Supported formats:**
-
-| Format | Extension | Validator |
-|--------|-----------|-----------|
-| TOML | `.toml` | tomli (vendored) |
-| JSON | `.json` | json (stdlib) |
+**Supported format:** TOML only (`.toml`)
 
 **Error output includes:**
 - Line and column numbers
@@ -205,66 +199,60 @@ xd deploy
 xd undeploy
 ```
 
-## Why Python?
+## Why Rust?
 
-The previous Rust version required:
-- ❌ Rust toolchain installation
-- ❌ Compilation time
-- ❌ `cargo install` or building from source
+The Rust rewrite provides:
+- ✅ **Single static binary** - No runtime dependencies, works anywhere
+- ✅ **Small binary size** - ~683KB with full optimizations
+- ✅ **Fast execution** - Near-instant startup, no interpreter overhead
+- ✅ **Memory safety** - Rust's borrow checker prevents common bugs
+- ✅ **Type safety** - Compile-time guarantees against null pointer issues
+- ✅ **Easy distribution** - Download one file, run anywhere
 
-This Python version:
-- ✅ Works wherever Python 3 exists (pre-installed on most systems)
-- ✅ No compilation needed
-- ✅ Single file (.pyz), easy to distribute
-- ✅ Download and use immediately
-- ✅ Robust TOML parsing with embedded tomli
+## Building from Source
 
-## Requirements
+```bash
+# Debug build (faster compilation, larger binary)
+cargo build
 
-- Python 3.8+ (required by vendored tomli)
-- Unix-like system (Linux, macOS) or Windows with Python
+# Release build (optimized, ~683KB)
+cargo build --release
 
-**Note:** Python 3.11+ has a built-in `tomllib`; this project uses **vendored [tomli](https://github.com/hukkin/tomli)** so it works on **Python 3.8, 3.9, 3.10** without any standard-library TOML. CI runs on 3.8, 3.10, and 3.12 to verify.
+# Run tests
+cargo test
+bash scripts/test-rust.sh
+```
 
-## What about the .pyz file?
-
-The `.pyz` file is a **single-file executable Python archive** (PEP 441). It:
-- ✅ Contains all code and dependencies (including tomli)
-- ✅ Runs with any Python 3.8+ interpreter
-- ✅ Is completely transparent (it's just a zip file)
-- ✅ Can be inspected with `unzip -l xd.pyz`
-- ✅ Works exactly like a `.py` file: `python3 xd.pyz deploy`
-
-**Why .pyz instead of .py?**
-- Building `.pyz` is **1 command**: `python -m zipapp ...`
-- Manually merging code is **very complex** (import handling, namespaces, etc.)
-- `.pyz` is **industry standard** (used by pip, shiv, etc.)
-- User experience is **identical**: download → run
+**Build dependencies:** Rust toolchain (1.70+), `clap`, `clap_complete`
+**Runtime dependencies:** None (static linking)
 
 ## Testing
 
 Run the test suite to verify all functionality:
 
 ```bash
-python3 test_xd.py
+# Unit tests (Rust)
+cargo test
+
+# Integration tests (Shell)
+bash scripts/test-rust.sh
 ```
 
-**Python 3.8–3.12** compatibility (including 3.8/3.10 without standard-library `tomllib`) is verified in **CI** on every push; see [.github/workflows/ci.yml](.github/workflows/ci.yml).
-
-**Test Coverage (37 tests):**
+**Test Coverage (99 tests):**
 
 | Category | Tests |
 |----------|-------|
-| CLI Commands | help, version, new |
-| Config Parsing | sections, comments, whitespace, quotes |
-| Deploy | basic link, dry-run, tilde expansion, multiple links |
+| Unit Tests | config (6), permissions (20), symlink (8), path expansion (6) |
+| CLI Commands | help, version, new, quiet, verbose |
+| Config Parsing | valid/invalid TOML, empty config, comments, whitespace, quotes |
+| Deploy | basic link, dry-run, tilde expansion, multiple links, force, unicode, absolute paths |
 | Undeploy | remove symlink, nonexistent link |
-| Flags | quiet, verbose, force |
-| Interactive | confirm yes/no |
-| Edge Cases | nonexistent source/config, invalid TOML, empty config |
-| Special Cases | unicode paths, absolute paths, existing symlink |
-| Dependencies | subdirectory deployment |
+| Validation | valid/invalid TOML, reject JSON, multiple files, auto-validation during deploy |
+| Shell Completion | bash, zsh, fish, no shell, invalid shell |
 | Permission Check | SSH key detection, fix, correct permission, pattern matching, dry-run |
+| Symlink Safety | loop detection, circular scenario, parent symlink fix |
+| Dependencies | subdirectory deployment |
+| Interactive Mode | confirm yes/no |
 
 ## Container Testing
 
@@ -276,15 +264,9 @@ Test with isolated environment using bubblewrap:
 
 This runs a complete deployment test of `cncsmonster/dotfiles` in an isolated sandbox.
 
-## Building
-
-```bash
-./scripts/build-pyz.sh
-```
-
 ## Shell Completion
 
-xdotter uses the vendored [argcomplete](https://github.com/kislyuk/argcomplete) library to automatically generate shell completion scripts from the argparse definition.
+xdotter generates shell completion scripts at compile time using `clap_complete`.
 
 ### Quick Setup (Recommended)
 
@@ -294,14 +276,14 @@ One-line setup that works immediately:
 # Bash - add to ~/.bashrc
 eval "$(xd completion bash)"
 
-# Zsh - add to ~/.zshrc  
+# Zsh - add to ~/.zshrc
 eval "$(xd completion zsh)"
 
 # Fish - add to config.fish
 xd completion fish | source
 ```
 
-**Important:** Make sure `xd` is in your `PATH`. If you installed via `build-pyz.sh --install`, add this to your `~/.bashrc` **before** the completion line:
+**Important:** Make sure `xd` is in your `PATH`. If you installed manually, add this to your `~/.bashrc` **before** the completion line:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -337,7 +319,7 @@ If completion doesn't work:
 The `xd completion <shell>` command generates a shell script that:
 1. Defines a completion function that calls `xd` with special environment variables
 2. Registers the function with your shell's completion system
-3. When you press TAB, the shell calls `xd` which uses argcomplete to generate completions dynamically
+3. When you press TAB, the shell calls `xd` which uses clap_complete to generate completions dynamically
 
 This ensures completions always stay in sync with the CLI definition - no manual maintenance needed.
 

@@ -2,17 +2,33 @@ name: CI
 
 on:
   push:
-    branches: [main, rust-rewrite]
+    branches:
+      - main
+      - rust-rewrite
+    tags:
+      - 'v*'
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - rust-rewrite
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # 1. Compilation check
-  check:
-    name: Check
+  # ============================================================
+  # Rust 跨平台测试 (rust-rewrite 分支 / tag / PR / 手动)
+  # ============================================================
+
+  # --- Linux ---
+  rust-check-linux:
+    name: Rust Check (Linux)
+    if: >
+      github.ref == 'refs/heads/rust-rewrite' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.base_ref == 'rust-rewrite')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,9 +37,13 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - run: cargo check --all-targets
 
-  # 2. Clippy lints
-  clippy:
-    name: Clippy
+  rust-clippy-linux:
+    name: Rust Clippy (Linux)
+    if: >
+      github.ref == 'refs/heads/rust-rewrite' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.base_ref == 'rust-rewrite')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,9 +54,13 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets -- -D warnings
 
-  # 3. Rustfmt
-  fmt:
-    name: Format
+  rust-fmt-linux:
+    name: Rust Format (Linux)
+    if: >
+      github.ref == 'refs/heads/rust-rewrite' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.base_ref == 'rust-rewrite')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,11 +69,15 @@ jobs:
           components: rustfmt
       - run: cargo fmt --check
 
-  # 4. Unit + Integration tests (cargo test)
-  test:
-    name: Tests
+  rust-test-linux:
+    name: Rust Unit Tests (Linux)
+    needs: [rust-check-linux]
+    if: >
+      github.ref == 'refs/heads/rust-rewrite' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.base_ref == 'rust-rewrite')
     runs-on: ubuntu-latest
-    needs: [check]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -57,11 +85,15 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - run: cargo test --no-fail-fast
 
-  # 5. E2E tests (shell test runner)
-  e2e:
-    name: E2E Tests
+  rust-e2e-linux:
+    name: Rust E2E Tests (Linux)
+    needs: [rust-check-linux]
+    if: >
+      github.ref == 'refs/heads/rust-rewrite' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.base_ref == 'rust-rewrite')
     runs-on: ubuntu-latest
-    needs: [check]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -72,12 +104,13 @@ jobs:
       - name: Run E2E test suite
         run: bash scripts/test-rust.sh
 
-  # 6. Binary size check (release only)
-  binary-size:
-    name: Binary Size
+  rust-binary-size-linux:
+    name: Binary Size (Linux)
+    needs: [rust-test-linux]
+    if: >
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    needs: [test]
-    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -87,7 +120,7 @@ jobs:
       - name: Check binary size
         run: |
           size=$(stat -c%s target/release/xd)
-          max_size=1048576  # 1MB
+          max_size=1048576
           echo "Binary size: $((size / 1024))KB"
           if [ $size -gt $max_size ]; then
             echo "::error::Binary too large: $size bytes (max: $max_size)"
@@ -95,14 +128,117 @@ jobs:
           fi
           echo "✓ Binary size within limit ($((max_size / 1024))KB)"
 
-  # 7. Cross-platform build verification
-  cross-build:
-    name: Cross Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+  # --- macOS ---
+  rust-check-macos:
+    name: Rust Check (macOS)
+    if: >
+      github.ref == 'refs/heads/rust-rewrite' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - run: cargo check --all-targets
+
+  rust-test-macos:
+    name: Rust Unit Tests (macOS)
+    needs: [rust-check-macos]
+    if: >
+      github.ref == 'refs/heads/rust-rewrite' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - run: cargo test --no-fail-fast
+
+  rust-e2e-macos:
+    name: Rust E2E Tests (macOS)
+    needs: [rust-check-macos]
+    if: >
+      github.ref == 'refs/heads/rust-rewrite' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Build debug binary
+        run: cargo build
+      - name: Run E2E test suite
+        run: bash scripts/test-rust.sh
+
+  rust-binary-size-macos:
+    name: Binary Size (macOS)
+    needs: [rust-test-macos]
+    if: >
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - name: Check binary size
+        run: |
+          size=$(stat -f%z target/release/xd)
+          max_size=1048576
+          echo "Binary size: $((size / 1024))KB"
+          if [ $size -gt $max_size ]; then
+            echo "::error::Binary too large: $size bytes (max: $max_size)"
+            exit 1
+          fi
+          echo "✓ Binary size within limit ($((max_size / 1024))KB)"
+
+  # --- Windows ---
+  rust-check-windows:
+    name: Rust Check (Windows)
+    if: >
+      github.ref == 'refs/heads/rust-rewrite' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - run: cargo check --all-targets
+
+  rust-test-windows:
+    name: Rust Unit Tests (Windows)
+    needs: [rust-check-windows]
+    if: >
+      github.ref == 'refs/heads/rust-rewrite' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      # Windows 不支持 Unix symlink，跳过 symlink 相关测试
+      - run: cargo test --no-fail-fast
+
+  rust-build-windows:
+    name: Rust Build (Windows)
+    needs: [rust-check-windows]
+    if: >
+      github.ref == 'refs/heads/rust-rewrite' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -110,5 +246,98 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - run: cargo build --release
       - name: Verify binary
+        run: .\target\release\xd.exe version
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: xd-windows-x86_64
+          path: target/release/xd.exe
+          if-no-files-found: error
+
+  # --- Release 上传 (tag only) ---
+  release-upload:
+    name: Upload Release Binaries
+    needs:
+      - rust-test-linux
+      - rust-test-macos
+      - rust-test-windows
+      - rust-binary-size-linux
+      - rust-binary-size-macos
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # Linux
+      - run: cargo build --release
+      - name: Upload Linux binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: xd-linux-x86_64
+          path: target/release/xd
+
+  # ============================================================
+  # Python 任务 (main 分支 / tag / PR / 手动)
+  # ============================================================
+
+  python-test:
+    name: Python Tests
+    if: >
+      github.ref == 'refs/heads/main' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python test_xd.py
+
+  # ============================================================
+  # 汇总状态
+  # ============================================================
+
+  summary:
+    name: Summary
+    if: always()
+    needs:
+      - rust-check-linux
+      - rust-clippy-linux
+      - rust-fmt-linux
+      - rust-test-linux
+      - rust-e2e-linux
+      - rust-binary-size-linux
+      - rust-check-macos
+      - rust-test-macos
+      - rust-e2e-macos
+      - rust-binary-size-macos
+      - rust-check-windows
+      - rust-test-windows
+      - rust-build-windows
+      - python-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print results
         run: |
-          ./target/release/xd version
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          for job in \
+            rust-check-linux rust-clippy-linux rust-fmt-linux rust-test-linux rust-e2e-linux rust-binary-size-linux \
+            rust-check-macos rust-test-macos rust-e2e-macos rust-binary-size-macos \
+            rust-check-windows rust-test-windows rust-build-windows \
+            python-test; do
+            result="${{ needs[job].result }}"
+            if [ -n "$result" ] && [ "$result" != "skipped" ]; then
+              icon="✅"
+              [ "$result" = "failure" ] && icon="❌"
+              echo "| $job | $icon $result |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| $job | ⏭️ skipped |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done

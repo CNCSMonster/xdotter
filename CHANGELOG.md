@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0] - 2026-04-12
+
+### Rust Rewrite
+- **Complete rewrite in Rust** - Single static binary, no runtime dependencies
+- **Binary size: ~683KB** (release build with LTO + strip)
+- **Dependencies**: clap (CLI), basic-toml (parsing), serde (derive), dirs (home detection), clap_complete (shell completion)
+- **All features implemented and tested** - 99 tests passing (40 unit + 59 integration)
+
+### Added
+- **`status` command** - Show deployment status (valid, broken, permission issues)
+- **Shell completion generation** - Auto-generated at compile time for bash, zsh, fish
+- **Enhanced symlink safety** - Loop detection, circular symlink detection, path conflict detection
+- **Parent symlink auto-fix** - `--force` flag automatically fixes parent directory symlink issues
+- **Config auto-validation** - Automatically validates TOML syntax before deployment
+- **Permission checking during deploy** - `--check-permissions` and `--fix-permissions` flags
+
+### Changed
+- **TOML-only configuration** - JSON support removed for simplicity and type safety
+- **Permission checking as flags** - No longer a separate `check-permissions` command; now `--check-permissions` and `--fix-permissions` flags during deploy
+- **Fixed config filename** - Always uses `xdotter.toml` in current directory (removed `-c`/`--config` parameter)
+- **Improved error messages** - Color-coded output (yellow warnings, red errors), Chinese language hints for TOML errors
+
+### Removed
+- **JSON config support** - Simplified to TOML-only for better type safety
+- **`check-permissions` subcommand** - Replaced by `--check-permissions` and `--fix-permissions` flags
+- **Python runtime dependency** - Now a single static Rust binary
+
+---
+
 ## [0.3.4] - 2026-04-03
 
 ### Fixed

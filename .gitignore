@@ -43,11 +43,6 @@ testdata/
 .DS_Store
 Thumbs.db
 
-# Rust (removed but keep in gitignore)
-target/
-Cargo.lock
-Cargo.toml
-
 # Vendored libraries (keep tomli source so Python <3.11 works without tomllib)
 # Also includes argcomplete for shell completion
 _vendor/*
@@ -62,9 +57,3 @@ _vendor/*
 _vendor/tomli/__pycache__/
 _vendor/argcomplete/__pycache__/
 __pycache__/
-
-
-
-# Added by cargo
-
-/target
