@@ -2,15 +2,10 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
-      - rust-rewrite
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
   pull_request:
-    branches:
-      - main
-      - rust-rewrite
+    branches: [main]
   workflow_dispatch:
 
 env:
@@ -18,17 +13,12 @@ env:
 
 jobs:
   # ============================================================
-  # Rust 跨平台测试 (rust-rewrite 分支 / tag / PR / 手动)
+  # Rust 检查/测试 (Linux/macOS/Windows)
   # ============================================================
 
   # --- Linux ---
   rust-check-linux:
     name: Rust Check (Linux)
-    if: >
-      github.ref == 'refs/heads/rust-rewrite' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.base_ref == 'rust-rewrite')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,11 +29,6 @@ jobs:
 
   rust-clippy-linux:
     name: Rust Clippy (Linux)
-    if: >
-      github.ref == 'refs/heads/rust-rewrite' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.base_ref == 'rust-rewrite')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,11 +41,6 @@ jobs:
 
   rust-fmt-linux:
     name: Rust Format (Linux)
-    if: >
-      github.ref == 'refs/heads/rust-rewrite' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.base_ref == 'rust-rewrite')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,11 +52,6 @@ jobs:
   rust-test-linux:
     name: Rust Unit Tests (Linux)
     needs: [rust-check-linux]
-    if: >
-      github.ref == 'refs/heads/rust-rewrite' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.base_ref == 'rust-rewrite')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,11 +63,6 @@ jobs:
   rust-e2e-linux:
     name: Rust E2E Tests (Linux)
     needs: [rust-check-linux]
-    if: >
-      github.ref == 'refs/heads/rust-rewrite' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.base_ref == 'rust-rewrite')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -107,9 +77,7 @@ jobs:
   rust-binary-size-linux:
     name: Binary Size (Linux)
     needs: [rust-test-linux]
-    if: >
-      startsWith(github.ref, 'refs/tags/') ||
-      github.event_name == 'workflow_dispatch'
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -131,10 +99,6 @@ jobs:
   # --- macOS ---
   rust-check-macos:
     name: Rust Check (macOS)
-    if: >
-      github.ref == 'refs/heads/rust-rewrite' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -146,10 +110,6 @@ jobs:
   rust-test-macos:
     name: Rust Unit Tests (macOS)
     needs: [rust-check-macos]
-    if: >
-      github.ref == 'refs/heads/rust-rewrite' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -161,10 +121,6 @@ jobs:
   rust-e2e-macos:
     name: Rust E2E Tests (macOS)
     needs: [rust-check-macos]
-    if: >
-      github.ref == 'refs/heads/rust-rewrite' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -179,9 +135,7 @@ jobs:
   rust-binary-size-macos:
     name: Binary Size (macOS)
     needs: [rust-test-macos]
-    if: >
-      startsWith(github.ref, 'refs/tags/') ||
-      github.event_name == 'workflow_dispatch'
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -203,10 +157,6 @@ jobs:
   # --- Windows ---
   rust-check-windows:
     name: Rust Check (Windows)
-    if: >
-      github.ref == 'refs/heads/rust-rewrite' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -218,26 +168,17 @@ jobs:
   rust-test-windows:
     name: Rust Unit Tests (Windows)
     needs: [rust-check-windows]
-    if: >
-      github.ref == 'refs/heads/rust-rewrite' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
-      # Windows 不支持 Unix symlink，跳过 symlink 相关测试
       - run: cargo test --no-fail-fast
 
   rust-build-windows:
     name: Rust Build (Windows)
     needs: [rust-check-windows]
-    if: >
-      github.ref == 'refs/heads/rust-rewrite' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -247,56 +188,6 @@ jobs:
       - run: cargo build --release
       - name: Verify binary
         run: .\target\release\xd.exe version
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          name: xd-windows-x86_64
-          path: target/release/xd.exe
-          if-no-files-found: error
-
-  # --- Release 上传 (tag only) ---
-  release-upload:
-    name: Upload Release Binaries
-    needs:
-      - rust-test-linux
-      - rust-test-macos
-      - rust-test-windows
-      - rust-binary-size-linux
-      - rust-binary-size-macos
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2
-
-      # Linux
-      - run: cargo build --release
-      - name: Upload Linux binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: xd-linux-x86_64
-          path: target/release/xd
-
-  # ============================================================
-  # Python 任务 (main 分支 / tag / PR / 手动)
-  # ============================================================
-
-  python-test:
-    name: Python Tests
-    if: >
-      github.ref == 'refs/heads/main' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - run: python test_xd.py
 
   # ============================================================
   # 汇总状态
@@ -319,7 +210,6 @@ jobs:
       - rust-check-windows
       - rust-test-windows
       - rust-build-windows
-      - python-test
     runs-on: ubuntu-latest
     steps:
       - name: Print results
@@ -330,8 +220,7 @@ jobs:
           for job in \
             rust-check-linux rust-clippy-linux rust-fmt-linux rust-test-linux rust-e2e-linux rust-binary-size-linux \
             rust-check-macos rust-test-macos rust-e2e-macos rust-binary-size-macos \
-            rust-check-windows rust-test-windows rust-build-windows \
-            python-test; do
+            rust-check-windows rust-test-windows rust-build-windows; do
             result="${{ needs[job].result }}"
             if [ -n "$result" ] && [ "$result" != "skipped" ]; then
               icon="✅"
