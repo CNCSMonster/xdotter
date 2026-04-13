@@ -4,23 +4,32 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 RUST_BIN="$PROJECT_DIR/target/debug/xd"
-GET_MODE="$SCRIPT_DIR/get-mode"
+GET_MODE_BIN="/tmp/xd-get-mode-$$"
 
-# Compile get-mode utility
-if ! rustc "$SCRIPT_DIR/get-mode.rs" -o "$GET_MODE" 2>/dev/null; then
-    echo "ERROR: Failed to compile get-mode utility"
-    exit 1
-fi
+# Compile get-mode utility at startup
+rustc --edition 2021 -o "$GET_MODE_BIN" - <<'RUST_CODE' 2>/dev/null
+use std::env;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 2 { std::process::exit(1); }
+    match fs::metadata(&args[1]) {
+        Ok(m) => println!("{:o}", m.permissions().mode() & 0o777),
+        Err(_) => std::process::exit(1),
+    }
+}
+RUST_CODE
 
 PASSED=0
 FAILED=0
 
-# Cross-platform file mode detection using Rust utility
+# Cross-platform file mode detection
 # Usage: get_file_mode <filepath>
 # Returns: file permission in octal (e.g., 600, 644)
 get_file_mode() {
     local filepath="$1"
-    "$GET_MODE" "$filepath" 2>/dev/null || echo "error"
+    "$GET_MODE_BIN" "$filepath" 2>/dev/null || echo "error"
 }
 
 log_test() {
