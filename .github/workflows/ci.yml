@@ -220,8 +220,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2
       - name: Build release
         run: cargo build --release --target x86_64-apple-darwin
       - name: Upload artifact
