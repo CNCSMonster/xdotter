@@ -23,6 +23,9 @@ dirs = "5"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 
+[dev-dependencies]
+serial_test = "3"
+
 [profile.release]
 opt-level = "z"
 lto = true

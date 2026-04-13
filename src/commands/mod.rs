@@ -511,6 +511,7 @@ fn cmd_undeploy(cli: &Cli) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::Cli;
+    use serial_test::serial;
     #[cfg(unix)]
     use std::os::unix::fs as unix_fs;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -568,6 +569,7 @@ mod tests {
     // ============================================================
 
     #[test]
+    #[serial]
     fn test_deploy_detects_cycle() {
         let dir = test_dir("cycle");
         let a = dir.join("a");
@@ -618,6 +620,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_deploy_no_cycle_linear() {
         let dir = test_dir("linear");
         let a = dir.join("a");
@@ -668,6 +671,7 @@ mod tests {
     // ============================================================
 
     #[test]
+    #[serial]
     #[cfg(unix)]
     fn test_deploy_rejects_symlink_source() {
         let dir = test_dir("symlink_src");
