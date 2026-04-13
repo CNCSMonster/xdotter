@@ -125,8 +125,8 @@ tests::test_expand_path_unicode_home
 | 检查项 | Linux | macOS | Windows |
 |--------|-------|-------|---------|
 | cargo check | ✅ | ✅ | ✅ |
-| cargo clippy | ✅ | ✅ | - |
-| cargo fmt --check | ✅ | ✅ | - |
+| cargo clippy | ✅ | ✅ | ✅ |
+| cargo fmt --check | ✅ | ✅ | ✅ |
 | cargo test | ✅ | ✅ | ✅ |
 | E2E 测试 | ✅ | ✅ | - |
 | Binary size | ✅ | ✅ | - |

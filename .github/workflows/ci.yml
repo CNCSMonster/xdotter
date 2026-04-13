@@ -198,6 +198,28 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - run: cargo test --no-fail-fast -- --test-threads=1
 
+  rust-clippy-windows:
+    name: Rust Clippy (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets -- -D warnings
+
+  rust-fmt-windows:
+    name: Rust Format (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --check
+
   rust-build-windows:
     name: Rust Build (Windows)
     needs: [rust-check-windows]
@@ -321,6 +343,8 @@ jobs:
       - rust-e2e-macos
       - rust-binary-size-macos
       - rust-check-windows
+      - rust-clippy-windows
+      - rust-fmt-windows
       - rust-test-windows
       - rust-build-windows
     runs-on: ubuntu-latest
