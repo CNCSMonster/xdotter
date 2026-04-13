@@ -1,5 +1,6 @@
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate_to, Shell};
+use std::env;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
@@ -38,19 +39,14 @@ enum Command {
     Deploy,
     Undeploy,
     Status,
-    Validate {
-        #[arg(num_args = 0..)]
-        files: Vec<PathBuf>,
-    },
+    Validate { files: Vec<PathBuf> },
     New,
-    Completion {
-        shell: String,
-    },
+    Completion { shell: String },
     Version,
 }
 
 fn main() {
-    let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
     let mut cmd = Cli::command();
 
