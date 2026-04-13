@@ -13,16 +13,16 @@ FAILED=0
 # Returns: file permission in octal (e.g., 600, 644)
 get_file_mode() {
     local filepath="$1"
-    # Use uname -s for more reliable OS detection
-    local os_name
-    os_name=$(uname -s 2>/dev/null || echo "unknown")
-    
-    if [[ "$os_name" == "Darwin" ]]; then
-        # macOS/BSD
+    # Try different methods for cross-platform compatibility
+    # Method 1: Try stat -f%a (macOS/BSD)
+    if stat -f%a "$filepath" >/dev/null 2>&1; then
         stat -f%a "$filepath"
-    else
-        # Linux and others
+    # Method 2: Try stat -c%a (Linux)
+    elif stat -c%a "$filepath" >/dev/null 2>&1; then
         stat -c%a "$filepath"
+    else
+        # Fallback: use perl (available on all platforms)
+        perl -e 'printf "%04o\n", (stat($ARGV[0]))[2] & 07777' "$filepath"
     fi
 }
 
