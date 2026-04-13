@@ -4,26 +4,23 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 RUST_BIN="$PROJECT_DIR/target/debug/xd"
+GET_MODE="$SCRIPT_DIR/get-mode"
+
+# Compile get-mode utility
+if ! rustc "$SCRIPT_DIR/get-mode.rs" -o "$GET_MODE" 2>/dev/null; then
+    echo "ERROR: Failed to compile get-mode utility"
+    exit 1
+fi
 
 PASSED=0
 FAILED=0
 
-# Cross-platform stat function
+# Cross-platform file mode detection using Rust utility
 # Usage: get_file_mode <filepath>
 # Returns: file permission in octal (e.g., 600, 644)
 get_file_mode() {
     local filepath="$1"
-    # Try different methods for cross-platform compatibility
-    # Method 1: Try stat -f%a (macOS/BSD)
-    if stat -f%a "$filepath" >/dev/null 2>&1; then
-        stat -f%a "$filepath"
-    # Method 2: Try stat -c%a (Linux)
-    elif stat -c%a "$filepath" >/dev/null 2>&1; then
-        stat -c%a "$filepath"
-    else
-        # Fallback: use perl (available on all platforms)
-        perl -e 'printf "%04o\n", (stat($ARGV[0]))[2] & 07777' "$filepath"
-    fi
+    "$GET_MODE" "$filepath" 2>/dev/null || echo "error"
 }
 
 log_test() {
