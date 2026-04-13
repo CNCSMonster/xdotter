@@ -7,9 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.4.1] - 2026-04-13
+
+### Added
+- **Nightly build-std optimization for release** — CI now uses `cargo +nightly build -Z build-std` to produce ~392KB binaries (down from ~640KB)
+- **Automatic GitHub Release upload** — Release binaries for Linux/macOS/Windows are automatically uploaded to GitHub Releases when a tag is pushed
+
 ### Changed
-- **Cross-platform CI** — Tests now run on Linux, macOS, and Windows for `rust-rewrite` branch
-- **Cleaned repository** — Removed Python implementation (`xd.py`, `test_xd.py`), vendored dependencies (`_vendor/`), and obsolete design docs
+- **Updated CI workflow** — Split into stable (check/test) and nightly (release build) stages
+- **Cleaned repository** — Removed all Python implementation files, vendored dependencies, and obsolete design docs
 
 ---
 
