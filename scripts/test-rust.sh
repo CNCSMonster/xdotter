@@ -5,9 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 RUST_BIN="$PROJECT_DIR/target/debug/xd"
 GET_MODE_BIN="/tmp/xd-get-mode-$$"
+GET_MODE_SRC="/tmp/xd-get-mode-$$-src.rs"
 
 # Compile get-mode utility at startup
-rustc --edition 2021 -o "$GET_MODE_BIN" - <<'RUST_CODE' 2>/dev/null
+cat > "$GET_MODE_SRC" << 'RUST_CODE'
 use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -20,6 +21,12 @@ fn main() {
     }
 }
 RUST_CODE
+
+if ! rustc --edition 2021 -o "$GET_MODE_BIN" "$GET_MODE_SRC" 2>/dev/null; then
+    echo "ERROR: Failed to compile get-mode utility"
+    exit 1
+fi
+rm -f "$GET_MODE_SRC"
 
 PASSED=0
 FAILED=0
