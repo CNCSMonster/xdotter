@@ -8,11 +8,25 @@ RUST_BIN="$PROJECT_DIR/target/debug/xd"
 PASSED=0
 FAILED=0
 
+# Cross-platform stat function
+# Usage: get_file_mode <filepath>
+# Returns: file permission in octal (e.g., 600, 644)
+get_file_mode() {
+    local filepath="$1"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        stat -f%a "$filepath"
+    else
+        # Linux
+        stat -c%a "$filepath"
+    fi
+}
+
 log_test() {
     local name="$1"
     local status="$2"
     local message="${3:-}"
-    
+
     if [ "$status" = "PASS" ]; then
         echo "  [PASS] $name"
         PASSED=$((PASSED + 1))
@@ -627,7 +641,7 @@ EOF
 # The fix-permissions command fixes the resolved target files
 run_xd "$tmpdir" --fix-permissions deploy > /dev/null 2>&1
 # Check the resolved target file (source file) permission
-actual_mode=$(stat -c%a "$tmpdir/source/id_ed25519")
+actual_mode=$(get_file_mode "$tmpdir/source/id_ed25519")
 if [ "$actual_mode" = "600" ]; then
     log_test "Permission Fix SSH Key" "PASS"
 else
@@ -649,7 +663,7 @@ cat > "$tmpdir/xdotter.toml" << EOF
 "source/id_ed25519" = "~/.ssh/id_ed25519_dry_perm.txt"
 EOF
 run_xd "$tmpdir" --fix-permissions -n deploy > /dev/null 2>&1
-actual_mode=$(stat -c%a "$tmpdir/source/id_ed25519")
+actual_mode=$(get_file_mode "$tmpdir/source/id_ed25519")
 if [ "$actual_mode" = "644" ]; then
     log_test "Permission Dry Run" "PASS"
 else
@@ -726,8 +740,8 @@ cat > "$tmpdir/xdotter.toml" << EOF
 "source/gpg.conf" = "~/.gnupg/gpg.conf"
 EOF
 output=$(run_xd "$tmpdir" --fix-permissions deploy 2>&1)
-mode_rsa=$(stat -c%a "$tmpdir/source/id_rsa" 2>/dev/null)
-mode_gpg=$(stat -c%a "$tmpdir/source/gpg.conf" 2>/dev/null)
+mode_rsa=$(get_file_mode "$tmpdir/source/id_rsa" 2>/dev/null)
+mode_gpg=$(get_file_mode "$tmpdir/source/gpg.conf" 2>/dev/null)
 if [ "$mode_rsa" = "600" ] && [ "$mode_gpg" = "600" ]; then
     log_test "Permission Fix Multiple Sensitive Files" "PASS"
 else
@@ -750,7 +764,7 @@ EOF
 # Should complete without error (fix_permission on a readable file works fine)
 output=$(run_xd "$tmpdir" --fix-permissions -v deploy 2>&1)
 exit_code=$?
-mode=$(stat -c%a "$tmpdir/source/id_ed25519" 2>/dev/null)
+mode=$(get_file_mode "$tmpdir/source/id_ed25519" 2>/dev/null)
 if [ $exit_code -eq 0 ] && [ "$mode" = "600" ]; then
     log_test "Permission Fix Fails Gracefully" "PASS"
 else
