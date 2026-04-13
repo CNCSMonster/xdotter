@@ -31,7 +31,15 @@ pub fn detect_circular_symlink_scenario(
             };
 
             if let Ok(parent_target_resolved) = parent_target.canonicalize() {
-                if parent_target_resolved == link_parent {
+                // Also canonicalize link_parent for consistent comparison
+                // This is important on macOS where /tmp -> /private/tmp
+                let link_parent_resolved = if link_parent.is_absolute() {
+                    link_parent.canonicalize().unwrap_or_else(|_| link_parent.to_path_buf())
+                } else {
+                    link_parent.to_path_buf()
+                };
+
+                if parent_target_resolved == link_parent_resolved {
                     return Some((actual_parent.to_path_buf(), link_parent.to_path_buf()));
                 }
             }

@@ -204,7 +204,7 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
       - name: Build release
-        run: cargo build --release
+        run: cargo build --release --target x86_64-unknown-linux-gnu
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -223,7 +223,7 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
       - name: Build release
-        run: cargo build --release
+        run: cargo build --release --target x86_64-apple-darwin
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -242,7 +242,7 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
       - name: Build release
-        run: cargo build --release
+        run: cargo build --release --target x86_64-pc-windows-msvc
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
