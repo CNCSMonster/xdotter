@@ -7,34 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Cross-platform CI** — Tests now run on Linux, macOS, and Windows for `rust-rewrite` branch
+- **Cleaned repository** — Removed Python implementation (`xd.py`, `test_xd.py`), vendored dependencies (`_vendor/`), and obsolete design docs
+
 ---
 
 ## [0.4.0] - 2026-04-12
 
 ### Rust Rewrite
-- **Complete rewrite in Rust** - Single static binary, no runtime dependencies
-- **Binary size: ~683KB** (release build with LTO + strip)
+- **Complete rewrite in Rust** — Single static binary, no runtime dependencies
+- **Binary size: ~683KB** (release build with LTO + strip + panic=abort)
 - **Dependencies**: clap (CLI), basic-toml (parsing), serde (derive), dirs (home detection), clap_complete (shell completion)
-- **All features implemented and tested** - 99 tests passing (40 unit + 59 integration)
+- **Cross-platform support** — Builds and runs on Linux, macOS, and Windows
 
 ### Added
-- **`status` command** - Show deployment status (valid, broken, permission issues)
-- **Shell completion generation** - Auto-generated at compile time for bash, zsh, fish
-- **Enhanced symlink safety** - Loop detection, circular symlink detection, path conflict detection
-- **Parent symlink auto-fix** - `--force` flag automatically fixes parent directory symlink issues
-- **Config auto-validation** - Automatically validates TOML syntax before deployment
-- **Permission checking during deploy** - `--check-permissions` and `--fix-permissions` flags
+- **`status` command** — Show deployment status (valid, broken, permission issues)
+- **Shell completion generation** — Auto-generated via `clap_complete` at compile time for bash, zsh, fish
+- **Enhanced symlink safety** — Loop detection, circular symlink detection, path conflict detection
+- **Parent symlink auto-fix** — `--force` flag automatically fixes parent directory symlink issues
+- **Config auto-validation** — Automatically validates TOML/JSON syntax before deployment
+- **Permission checking during deploy** — `--check-permissions` and `--fix-permissions` flags
+- **89 tests** — 39 unit tests + 50 E2E integration tests, all passing
 
 ### Changed
-- **TOML-only configuration** - JSON support removed for simplicity and type safety
-- **Permission checking as flags** - No longer a separate `check-permissions` command; now `--check-permissions` and `--fix-permissions` flags during deploy
-- **Fixed config filename** - Always uses `xdotter.toml` in current directory (removed `-c`/`--config` parameter)
-- **Improved error messages** - Color-coded output (yellow warnings, red errors), Chinese language hints for TOML errors
+- **Permission checking as flags** — No longer a separate `check-permissions` command; now `--check-permissions` and `--fix-permissions` flags during deploy
+- **Fixed config filename** — Always uses `xdotter.toml` or `xdotter.json` in current directory (removed `-c`/`--config` parameter)
+- **Improved error messages** — Color-coded output (yellow warnings, red errors), Chinese language hints for TOML errors
+- **Flags before subcommand** — All global flags (`-v`, `-q`, `-n`, `-f`, `-i`) must appear before the command: `xd -v deploy` not `xd deploy -v`
 
 ### Removed
-- **JSON config support** - Simplified to TOML-only for better type safety
-- **`check-permissions` subcommand** - Replaced by `--check-permissions` and `--fix-permissions` flags
-- **Python runtime dependency** - Now a single static Rust binary
+- **`check-permissions` subcommand** — Replaced by `--check-permissions` and `--fix-permissions` flags
+- **Python runtime dependency** — Now a single static Rust binary
 
 ---
 
