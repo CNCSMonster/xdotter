@@ -13,7 +13,7 @@ env:
 
 jobs:
   # ============================================================
-  # Rust 检查/测试 (Linux/macOS/Windows)
+  # Rust 检查/测试 (Linux/macOS/Windows) — stable
   # ============================================================
 
   # --- Linux ---
@@ -188,6 +188,103 @@ jobs:
       - run: cargo build --release
       - name: Verify binary
         run: .\target\release\xd.exe version
+
+  # ============================================================
+  # Release 构建 — nightly + build-std (最优体积)
+  # ============================================================
+
+  release-linux:
+    name: Release Build (Linux x86_64)
+    needs: [rust-test-linux, rust-e2e-linux]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Build release (nightly + build-std)
+        run: cargo +nightly build -Z build-std --target x86_64-unknown-linux-gnu --release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xd-linux-x86_64
+          path: target/x86_64-unknown-linux-gnu/release/xd
+          if-no-files-found: error
+
+  release-macos:
+    name: Release Build (macOS x86_64)
+    needs: [rust-test-macos, rust-e2e-macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Build release (nightly + build-std)
+        run: cargo +nightly build -Z build-std --target x86_64-apple-darwin --release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xd-macos-x86_64
+          path: target/x86_64-apple-darwin/release/xd
+          if-no-files-found: error
+
+  release-windows:
+    name: Release Build (Windows x86_64)
+    needs: [rust-test-windows]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Build release (nightly + build-std)
+        run: cargo +nightly build -Z build-std --target x86_64-pc-windows-msvc --release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xd-windows-x86_64
+          path: target/x86_64-pc-windows-msvc/release/xd.exe
+          if-no-files-found: error
+
+  # ============================================================
+  # 上传到 GitHub Release
+  # ============================================================
+
+  upload-release:
+    name: Upload to GitHub Release
+    needs: [release-linux, release-macos, release-windows]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Prepare release assets
+        run: |
+          mkdir release
+          cp artifacts/xd-linux-x86_64/xd        release/xd-linux-x86_64
+          cp artifacts/xd-macos-x86_64/xd        release/xd-macos-x86_64
+          cp artifacts/xd-windows-x86_64/xd.exe  release/xd-windows-x86_64.exe
+          ls -lh release/
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+          draft: false
 
   # ============================================================
   # 汇总状态
