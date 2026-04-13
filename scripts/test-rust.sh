@@ -13,11 +13,15 @@ FAILED=0
 # Returns: file permission in octal (e.g., 600, 644)
 get_file_mode() {
     local filepath="$1"
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
+    # Use uname -s for more reliable OS detection
+    local os_name
+    os_name=$(uname -s 2>/dev/null || echo "unknown")
+    
+    if [[ "$os_name" == "Darwin" ]]; then
+        # macOS/BSD
         stat -f%a "$filepath"
     else
-        # Linux
+        # Linux and others
         stat -c%a "$filepath"
     fi
 }
