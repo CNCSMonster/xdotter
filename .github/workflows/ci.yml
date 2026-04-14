@@ -251,7 +251,7 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
       - name: Build release
-        run: cargo build --release --target x86_64-unknown-linux-gnu
+        run: cargo +nightly build --release --target x86_64-unknown-linux-gnu -Z build-std=std,panic_abort
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -277,7 +277,7 @@ jobs:
       - name: Build release
         run: |
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
-          cargo build --release --target aarch64-unknown-linux-gnu
+          cargo +nightly build --release --target aarch64-unknown-linux-gnu -Z build-std=std,panic_abort
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -297,7 +297,7 @@ jobs:
           targets: x86_64-apple-darwin
           components: rust-src
       - name: Build release
-        run: cargo build --release --target x86_64-apple-darwin
+        run: cargo +nightly build --release --target x86_64-apple-darwin -Z build-std=std,panic_abort
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -322,7 +322,7 @@ jobs:
         with:
           shared-key: "macos-aarch64"
       - name: Build release
-        run: cargo build --release --target aarch64-apple-darwin
+        run: cargo +nightly build --release --target aarch64-apple-darwin -Z build-std=std,panic_abort
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -344,7 +344,7 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
       - name: Build release
-        run: cargo build --release --target x86_64-pc-windows-msvc
+        run: cargo +nightly build --release --target x86_64-pc-windows-msvc -Z build-std=std,panic_abort
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -402,7 +402,7 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
       - name: Publish to crates.io
-        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo +nightly publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }} -Z build-std=std,panic_abort
         env:
           CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
