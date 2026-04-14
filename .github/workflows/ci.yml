@@ -245,6 +245,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-unknown-linux-gnu
+          components: rust-src
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
       - name: Build release
@@ -266,6 +269,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           targets: aarch64-unknown-linux-gnu
+          components: rust-src
       - name: Install cross linker
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
       - name: Cache dependencies
@@ -289,6 +293,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-apple-darwin
+          components: rust-src
       - name: Build release
         run: cargo build --release --target x86_64-apple-darwin
       - name: Upload artifact
@@ -308,6 +315,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           targets: aarch64-apple-darwin
+          components: rust-src
       - name: Cache dependencies
         # Disable cache to avoid stale cross-compilation artifacts
         uses: Swatinem/rust-cache@v2
@@ -330,6 +338,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rust-src
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
       - name: Build release
@@ -385,6 +396,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-unknown-linux-gnu
+          components: rust-src
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
       - name: Publish to crates.io
