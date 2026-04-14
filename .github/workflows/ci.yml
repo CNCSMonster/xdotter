@@ -234,10 +234,10 @@ jobs:
         run: .\target\release\xd.exe version
 
   # ============================================================
-  # Release 构建 — nightly + build-std (最优体积)
+  # Release 构建 — x86_64 + aarch64
   # ============================================================
 
-  release-linux:
+  release-linux-x86_64:
     name: Release Build (Linux x86_64)
     needs: [rust-test-linux, rust-e2e-linux]
     if: startsWith(github.ref, 'refs/tags/')
@@ -256,7 +256,32 @@ jobs:
           path: target/x86_64-unknown-linux-gnu/release/xd
           if-no-files-found: error
 
-  release-macos:
+  release-linux-aarch64:
+    name: Release Build (Linux aarch64)
+    needs: [rust-test-linux, rust-e2e-linux]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - name: Install cross linker
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Build release
+        run: |
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+          cargo build --release --target aarch64-unknown-linux-gnu
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xd-linux-aarch64
+          path: target/aarch64-unknown-linux-gnu/release/xd
+          if-no-files-found: error
+
+  release-macos-x86_64:
     name: Release Build (macOS x86_64)
     needs: [rust-test-macos, rust-e2e-macos]
     if: startsWith(github.ref, 'refs/tags/')
@@ -273,7 +298,31 @@ jobs:
           path: target/x86_64-apple-darwin/release/xd
           if-no-files-found: error
 
-  release-windows:
+  release-macos-aarch64:
+    name: Release Build (macOS aarch64 / Apple Silicon)
+    needs: [rust-test-macos, rust-e2e-macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - name: Cache dependencies
+        # Disable cache to avoid stale cross-compilation artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "macos-aarch64"
+      - name: Build release
+        run: cargo build --release --target aarch64-apple-darwin
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xd-macos-aarch64
+          path: target/aarch64-apple-darwin/release/xd
+          if-no-files-found: error
+
+  release-windows-x86_64:
     name: Release Build (Windows x86_64)
     needs: [rust-test-windows]
     if: startsWith(github.ref, 'refs/tags/')
@@ -298,7 +347,7 @@ jobs:
 
   upload-release:
     name: Upload to GitHub Release
-    needs: [release-linux, release-macos, release-windows]
+    needs: [release-linux-x86_64, release-linux-aarch64, release-macos-x86_64, release-macos-aarch64, release-windows-x86_64]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
@@ -311,9 +360,11 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir release
-          cp artifacts/xd-linux-x86_64/xd        release/xd-linux-x86_64
-          cp artifacts/xd-macos-x86_64/xd        release/xd-macos-x86_64
-          cp artifacts/xd-windows-x86_64/xd.exe  release/xd-windows-x86_64.exe
+          cp artifacts/xd-linux-x86_64/xd          release/xd-linux-x86_64
+          cp artifacts/xd-linux-aarch64/xd         release/xd-linux-aarch64
+          cp artifacts/xd-macos-x86_64/xd          release/xd-macos-x86_64
+          cp artifacts/xd-macos-aarch64/xd         release/xd-macos-aarch64
+          cp artifacts/xd-windows-x86_64/xd.exe    release/xd-windows-x86_64.exe
           ls -lh release/
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -321,6 +372,25 @@ jobs:
           files: release/*
           generate_release_notes: true
           draft: false
+
+  # ============================================================
+  # 发布到 crates.io
+  # ============================================================
+
+  publish-crates-io:
+    name: Publish to crates.io
+    needs: [release-linux-x86_64, release-macos-x86_64, release-windows-x86_64]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Publish to crates.io
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        env:
+          CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
   # ============================================================
   # 汇总状态
