@@ -371,12 +371,16 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir release
-          cp artifacts/xd-linux-x86_64/xd          release/xd-linux-x86_64
-          cp artifacts/xd-linux-aarch64/xd         release/xd-linux-aarch64
-          cp artifacts/xd-macos-x86_64/xd          release/xd-macos-x86_64
-          cp artifacts/xd-macos-aarch64/xd         release/xd-macos-aarch64
-          cp artifacts/xd-windows-x86_64/xd.exe    release/xd-windows-x86_64.exe
-          ls -lh release/
+          # Use standard Rust target triple names for consistent naming
+          cp artifacts/xd-linux-x86_64/xd          release/xd-x86_64-unknown-linux-gnu
+          cp artifacts/xd-linux-aarch64/xd         release/xd-aarch64-unknown-linux-gnu
+          cp artifacts/xd-macos-x86_64/xd          release/xd-x86_64-apple-darwin
+          cp artifacts/xd-macos-aarch64/xd         release/xd-arm64-apple-darwin
+          cp artifacts/xd-windows-x86_64/xd.exe    release/xd-x86_64-pc-windows-msvc.exe
+          # Generate SHA256 checksums
+          cd release
+          sha256sum * > SHA256SUMS
+          ls -lh
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -390,7 +394,7 @@ jobs:
 
   publish-crates-io:
     name: Publish to crates.io
-    needs: [release-linux-x86_64, release-macos-x86_64, release-windows-x86_64]
+    needs: [release-linux-x86_64, release-linux-aarch64, release-macos-x86_64, release-macos-aarch64, release-windows-x86_64]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
