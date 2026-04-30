@@ -119,9 +119,19 @@ pub fn would_create_symlink_loop(link_path: &Path, actual: &Path) -> bool {
     false
 }
 
+fn absolute_for_checks(path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .unwrap_or_else(|_| path.to_path_buf())
+    }
+}
+
 /// Check if link_path and actual would conflict (one inside the other).
 pub fn paths_would_conflict(link_path: &Path, actual: &Path) -> bool {
-    let link_absolute = link_path.to_path_buf();
+    let link_absolute = absolute_for_checks(link_path);
     let actual_resolved = match actual.canonicalize() {
         Ok(p) => p,
         Err(_) => return false,
@@ -144,7 +154,84 @@ pub fn paths_would_conflict(link_path: &Path, actual: &Path) -> bool {
         return true;
     }
 
+    // If an existing real link directory contains the source, forcing removal
+    // of that directory would also remove the source.
+    if link_path.exists()
+        && link_path.is_dir()
+        && !link_path.is_symlink()
+        && actual_resolved.strip_prefix(&link_resolved).is_ok()
+    {
+        return true;
+    }
+
     false
+}
+
+/// Validate that a link path contains no parent-directory traversal (`..`)
+/// after `~` expansion. This is a hard safety rule per SPEC — link paths
+/// are destructive operation targets.
+pub fn validate_link_path_no_parent_traversal(link_path: &Path) -> Result<(), String> {
+    for component in link_path.components() {
+        if component == std::path::Component::ParentDir {
+            return Err(format!(
+                "Link path must not contain parent-directory traversal (..): {}",
+                link_path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Validate a dependency path against SPEC rules:
+/// - must not be absolute
+/// - must not contain `..`
+/// - after resolving symlinks, must still be inside the config directory tree
+///
+/// `canon_config_dir` is the canonicalized configuration directory.
+/// `dep_path` is the raw dependency path from xdotter.toml.
+pub fn validate_dependency_path(
+    canon_config_dir: &Path,
+    dep_path: &str,
+) -> Result<PathBuf, String> {
+    let dep_path = Path::new(dep_path);
+
+    // Must not be absolute
+    if dep_path.is_absolute() {
+        return Err(format!(
+            "Dependency path must be relative, not absolute: {}",
+            dep_path.display()
+        ));
+    }
+
+    // Must not contain `..`
+    for component in dep_path.components() {
+        if component == std::path::Component::ParentDir {
+            return Err(format!(
+                "Dependency path must not contain parent-directory traversal (..): {}",
+                dep_path.display()
+            ));
+        }
+    }
+
+    // Resolve against config dir and canonicalize
+    let dep_dir = canon_config_dir.join(dep_path);
+    let canon_dep_dir = dep_dir.canonicalize().map_err(|e| {
+        format!(
+            "Dependency directory does not exist or is inaccessible: {}: {}",
+            dep_path.display(),
+            e
+        )
+    })?;
+
+    // Must stay inside config directory after symlink resolution
+    if !canon_dep_dir.starts_with(canon_config_dir) {
+        return Err(format!(
+            "Dependency path escapes the configuration directory after symlink resolution: {}",
+            dep_path.display()
+        ));
+    }
+
+    Ok(canon_dep_dir)
 }
 
 pub fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), String> {
@@ -153,6 +240,11 @@ pub fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), St
         .map_err(|e| format!("Source path does not exist: {}: {}", actual_path, e))?;
 
     let link_path = expand_path(link);
+
+    // SPEC: link paths must not contain `..` after `~` expansion.
+    // This check runs before any filesystem modification and applies
+    // regardless of --force, --interactive, --dry-run, or --no-validate.
+    validate_link_path_no_parent_traversal(&link_path)?;
 
     // Check if parent directory is a symlink
     if let Some(link_parent) = link_path.parent() {
@@ -193,6 +285,34 @@ pub fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), St
                                 "info",
                                 "Note: The symlink target's contents will NOT be deleted, only the symlink itself is removed"
                             );
+                            if cli.dry_run {
+                                log(
+                                    cli,
+                                    "info",
+                                    &format!(
+                                        "Would remove parent symlink {}",
+                                        link_parent.display()
+                                    ),
+                                );
+                                log(
+                                    cli,
+                                    "info",
+                                    &format!(
+                                        "Would create real directory {}",
+                                        link_parent.display()
+                                    ),
+                                );
+                                log(
+                                    cli,
+                                    "info",
+                                    &format!(
+                                        "Would create symlink: {} -> {}",
+                                        link_path.display(),
+                                        actual.display()
+                                    ),
+                                );
+                                return Ok(());
+                            }
                             fs::remove_file(link_parent).map_err(|e| e.to_string())?;
                             fs::create_dir_all(link_parent).map_err(|e| e.to_string())?;
                         } else if cli.interactive {
@@ -217,6 +337,34 @@ pub fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), St
                                     "Would overwrite actual file (parent is symlink)".to_string()
                                 );
                             }
+                            if cli.dry_run {
+                                log(
+                                    cli,
+                                    "info",
+                                    &format!(
+                                        "Would remove parent symlink {}",
+                                        link_parent.display()
+                                    ),
+                                );
+                                log(
+                                    cli,
+                                    "info",
+                                    &format!(
+                                        "Would create real directory {}",
+                                        link_parent.display()
+                                    ),
+                                );
+                                log(
+                                    cli,
+                                    "info",
+                                    &format!(
+                                        "Would create symlink: {} -> {}",
+                                        link_path.display(),
+                                        actual.display()
+                                    ),
+                                );
+                                return Ok(());
+                            }
                             fs::remove_file(link_parent).map_err(|e| e.to_string())?;
                             fs::create_dir_all(link_parent).map_err(|e| e.to_string())?;
                         } else {
@@ -239,54 +387,23 @@ pub fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), St
         }
     }
 
-    // Check if link already exists
-    if link_path.exists() || link_path.is_symlink() {
-        if link_path.is_symlink() {
-            if let Ok(existing_target) = fs::read_link(&link_path) {
-                let existing_resolved = expand_path(&existing_target.to_string_lossy());
-                if let Ok(existing_canon) = existing_resolved.canonicalize() {
-                    if existing_canon == actual {
-                        log(cli, "debug", "Symlink already exists, skipping");
-                        return Ok(());
-                    }
+    // If the correct symlink already exists, skip before conflict checks.
+    if link_path.is_symlink() {
+        if let Ok(existing_target) = fs::read_link(&link_path) {
+            let existing_resolved = expand_path(&existing_target.to_string_lossy());
+            if let Ok(existing_canon) = existing_resolved.canonicalize() {
+                if existing_canon == actual {
+                    log(cli, "debug", "Symlink already exists, skipping");
+                    return Ok(());
                 }
-            }
-        }
-
-        // Handle existing file/link
-        if cli.interactive {
-            print!("Link {} exists, remove it? [y/n] ", link_path.display());
-            io::Write::flush(&mut io::stdout()).ok();
-            let mut input = String::new();
-            io::stdin().read_line(&mut input).ok();
-            if input.trim().to_lowercase() != "y" {
-                return Ok(());
-            }
-        } else if !cli.force {
-            return Err(format!(
-                "Path exists, use --force or --interactive to overwrite: {}",
-                link_path.display()
-            ));
-        }
-
-        if cli.dry_run {
-            log(
-                cli,
-                "debug",
-                &format!("Would remove {}", link_path.display()),
-            );
-        } else {
-            log(cli, "debug", &format!("Removing {}", link_path.display()));
-            if link_path.is_dir() && !link_path.is_symlink() {
-                fs::remove_dir_all(&link_path).map_err(|e| e.to_string())?;
-            } else {
-                fs::remove_file(&link_path).map_err(|e| e.to_string())?;
             }
         }
     }
 
+    let link_check_path = absolute_for_checks(&link_path);
+
     // Check for path conflict
-    if paths_would_conflict(&link_path, &actual) {
+    if paths_would_conflict(&link_check_path, &actual) {
         log(
             cli,
             "warning",
@@ -300,7 +417,7 @@ pub fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), St
     }
 
     // Check for symlink loop
-    if would_create_symlink_loop(&link_path, &actual) {
+    if would_create_symlink_loop(&link_check_path, &actual) {
         log(
             cli,
             "warning",
@@ -339,7 +456,7 @@ pub fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), St
 
     // Check for circular symlink scenario
     if let Some((circular_symlink, link_parent)) =
-        detect_circular_symlink_scenario(&link_path, &actual)
+        detect_circular_symlink_scenario(&link_check_path, &actual)
     {
         log(cli, "warning", "Circular symlink scenario detected!");
         log(
@@ -383,6 +500,39 @@ pub fn create_symlink(actual_path: &str, link: &str, cli: &Cli) -> Result<(), St
                 "Skipping this link to prevent circular reference (use -i to fix interactively)",
             );
             return Err("Circular symlink scenario detected, skipped".to_string());
+        }
+    }
+
+    // Check if link already exists after all safety checks pass.
+    if link_path.exists() || link_path.is_symlink() {
+        if cli.interactive {
+            print!("Link {} exists, remove it? [y/n] ", link_path.display());
+            io::Write::flush(&mut io::stdout()).ok();
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).ok();
+            if input.trim().to_lowercase() != "y" {
+                return Ok(());
+            }
+        } else if !cli.force {
+            return Err(format!(
+                "Path exists, use --force or --interactive to overwrite: {}",
+                link_path.display()
+            ));
+        }
+
+        if cli.dry_run {
+            log(
+                cli,
+                "debug",
+                &format!("Would remove {}", link_path.display()),
+            );
+        } else {
+            log(cli, "debug", &format!("Removing {}", link_path.display()));
+            if link_path.is_dir() && !link_path.is_symlink() {
+                fs::remove_dir_all(&link_path).map_err(|e| e.to_string())?;
+            } else {
+                fs::remove_file(&link_path).map_err(|e| e.to_string())?;
+            }
         }
     }
 
@@ -439,6 +589,7 @@ fn create_symlink_impl(actual: &Path, link_path: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     #[cfg(unix)]
     use std::os::unix::fs as unix_fs;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -455,6 +606,20 @@ mod tests {
 
     fn cleanup(dir: &Path) {
         let _ = fs::remove_dir_all(dir);
+    }
+
+    fn force_cli() -> Cli {
+        Cli {
+            command: None,
+            verbose: false,
+            quiet: false,
+            dry_run: false,
+            interactive: false,
+            force: true,
+            check_permissions: false,
+            fix_permissions: false,
+            no_validate: false,
+        }
     }
 
     // ============================================================
@@ -499,6 +664,158 @@ mod tests {
         fs::write(&file_b, "test").unwrap();
 
         assert!(!paths_would_conflict(&file_a, &file_b));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn test_force_rejects_same_source_and_link_without_deleting() {
+        let dir = tmpdir("force_same_path");
+        let file = dir.join("file.txt");
+        fs::write(&file, "test").unwrap();
+
+        let result = create_symlink(
+            &file.to_string_lossy(),
+            &file.to_string_lossy(),
+            &force_cli(),
+        );
+
+        assert_eq!(result.unwrap_err(), "Path conflict detected");
+        assert!(file.exists());
+        assert_eq!(fs::read_to_string(&file).unwrap(), "test");
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn test_force_rejects_link_inside_source_without_deleting() {
+        let dir = tmpdir("force_link_inside_source");
+        let source = dir.join("source");
+        fs::create_dir_all(&source).unwrap();
+        let existing = source.join("existing.txt");
+        fs::write(&existing, "keep").unwrap();
+
+        let result = create_symlink(
+            &source.to_string_lossy(),
+            &existing.to_string_lossy(),
+            &force_cli(),
+        );
+
+        assert_eq!(result.unwrap_err(), "Path conflict detected");
+        assert!(existing.exists());
+        assert_eq!(fs::read_to_string(&existing).unwrap(), "keep");
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    #[serial]
+    fn test_force_rejects_relative_link_inside_source_without_deleting() {
+        let dir = tmpdir("force_relative_link_inside_source");
+        let previous_dir = std::env::current_dir().unwrap();
+        let source = dir.join("source");
+        fs::create_dir_all(&source).unwrap();
+        let link = source.join("new-link");
+
+        std::env::set_current_dir(&dir).unwrap();
+        let result = create_symlink("source", "source/new-link", &force_cli());
+        std::env::set_current_dir(previous_dir).unwrap();
+
+        assert_eq!(result.unwrap_err(), "Path conflict detected");
+        assert!(source.exists());
+        assert!(!link.exists());
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn test_force_rejects_source_inside_existing_link_dir_without_deleting() {
+        let dir = tmpdir("force_source_inside_link");
+        let link_dir = dir.join("target");
+        fs::create_dir_all(&link_dir).unwrap();
+        let source = link_dir.join("source.txt");
+        fs::write(&source, "keep").unwrap();
+
+        let result = create_symlink(
+            &source.to_string_lossy(),
+            &link_dir.to_string_lossy(),
+            &force_cli(),
+        );
+
+        assert_eq!(result.unwrap_err(), "Path conflict detected");
+        assert!(source.exists());
+        assert_eq!(fs::read_to_string(&source).unwrap(), "keep");
+        assert!(link_dir.is_dir());
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn test_force_replaces_existing_regular_file_when_safe() {
+        let dir = tmpdir("force_replace_file");
+        let actual = dir.join("actual.txt");
+        let link = dir.join("link.txt");
+        fs::write(&actual, "source").unwrap();
+        fs::write(&link, "old").unwrap();
+
+        let result = create_symlink(
+            &actual.to_string_lossy(),
+            &link.to_string_lossy(),
+            &force_cli(),
+        );
+
+        assert!(result.is_ok());
+        assert!(actual.exists());
+        assert!(link.is_symlink());
+        assert_eq!(link.canonicalize().unwrap(), actual.canonicalize().unwrap());
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_force_replaces_existing_wrong_symlink_when_safe() {
+        let dir = tmpdir("force_replace_symlink");
+        let actual = dir.join("actual.txt");
+        let old_actual = dir.join("old.txt");
+        let link = dir.join("link.txt");
+        fs::write(&actual, "source").unwrap();
+        fs::write(&old_actual, "old").unwrap();
+        unix_fs::symlink(&old_actual, &link).unwrap();
+
+        let result = create_symlink(
+            &actual.to_string_lossy(),
+            &link.to_string_lossy(),
+            &force_cli(),
+        );
+
+        assert!(result.is_ok());
+        assert!(actual.exists());
+        assert!(old_actual.exists());
+        assert!(link.is_symlink());
+        assert_eq!(link.canonicalize().unwrap(), actual.canonicalize().unwrap());
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_force_skips_existing_correct_symlink() {
+        let dir = tmpdir("force_existing_correct");
+        let actual = dir.join("actual.txt");
+        let link = dir.join("link.txt");
+        fs::write(&actual, "test").unwrap();
+        unix_fs::symlink(&actual, &link).unwrap();
+
+        let result = create_symlink(
+            &actual.to_string_lossy(),
+            &link.to_string_lossy(),
+            &force_cli(),
+        );
+
+        assert!(result.is_ok());
+        assert!(link.is_symlink());
+        assert_eq!(link.canonicalize().unwrap(), actual.canonicalize().unwrap());
 
         cleanup(&dir);
     }
@@ -636,6 +953,99 @@ mod tests {
             "Should detect circular scenario (direct parent)"
         );
 
+        cleanup(&dir);
+    }
+
+    // ============================================================
+    // validate_link_path_no_parent_traversal tests
+    // ============================================================
+
+    #[test]
+    fn test_link_path_no_parent_traversal_clean() {
+        assert!(validate_link_path_no_parent_traversal(Path::new("/home/user/file")).is_ok());
+        assert!(validate_link_path_no_parent_traversal(Path::new("relative/path/to/file")).is_ok());
+        assert!(validate_link_path_no_parent_traversal(Path::new("~/dotfiles/.zshrc")).is_ok());
+    }
+
+    #[test]
+    fn test_link_path_rejects_dotdot() {
+        let err = validate_link_path_no_parent_traversal(Path::new("/home/user/../etc/passwd"))
+            .expect_err("Should reject ..");
+        assert!(err.contains(".."));
+
+        let err = validate_link_path_no_parent_traversal(Path::new("../escape"))
+            .expect_err("Should reject ..");
+        assert!(err.contains(".."));
+
+        let err = validate_link_path_no_parent_traversal(Path::new("foo/../bar"))
+            .expect_err("Should reject ..");
+        assert!(err.contains(".."));
+    }
+
+    #[test]
+    fn test_link_path_rejects_dotdot_in_tilde_expanded() {
+        // After ~ expansion, path may still contain ..
+        let err = validate_link_path_no_parent_traversal(Path::new("~/../etc"))
+            .expect_err("Should reject ..");
+        assert!(err.contains(".."));
+    }
+
+    // ============================================================
+    // validate_dependency_path tests
+    // ============================================================
+
+    #[test]
+    fn test_dependency_path_rejects_absolute() {
+        let dir = tmpdir("dep_absolute");
+        let err = validate_dependency_path(&dir, "/absolute/path")
+            .expect_err("Should reject absolute path");
+        assert!(err.contains("absolute"));
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn test_dependency_path_rejects_dotdot() {
+        let dir = tmpdir("dep_dotdot");
+        let err = validate_dependency_path(&dir, "../escape").expect_err("Should reject ..");
+        assert!(err.contains(".."));
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn test_dependency_path_valid_subdirectory() {
+        let dir = tmpdir("dep_valid");
+        let sub = dir.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        assert!(validate_dependency_path(&dir, "sub").is_ok());
+        cleanup(&dir);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_dependency_path_rejects_symlink_escape() {
+        let dir = tmpdir("dep_escape");
+        let outside_dir = tmpdir("dep_outside");
+        let inside_sub = dir.join("sub");
+        fs::create_dir_all(&inside_sub).unwrap();
+
+        // Symlink from inside_sub/escape → outside_dir (outside config tree)
+        unix_fs::symlink(&outside_dir, inside_sub.join("escape")).unwrap();
+
+        // Depend on "sub/escape" which resolves to outside_dir/ (outside dir/)
+        let err =
+            validate_dependency_path(&dir, "sub/escape").expect_err("Should reject symlink escape");
+        assert!(err.contains("escapes"));
+
+        cleanup(&dir);
+        cleanup(&outside_dir);
+    }
+
+    #[test]
+    fn test_dependency_path_nonexistent() {
+        let dir = tmpdir("dep_nonexistent");
+        let err = validate_dependency_path(&dir, "nonexistent")
+            .expect_err("Should reject nonexistent dependency directory");
+        assert!(err.contains("exist") || err.contains("inaccessible"));
         cleanup(&dir);
     }
 }

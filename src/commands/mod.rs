@@ -2,7 +2,7 @@ use crate::cli::{Cli, Command};
 use crate::config::{detect_format, validate_toml, Config};
 use crate::expand_path;
 use crate::permissions::{check_permission, fix_permission, get_required_permission};
-use crate::symlink;
+use crate::symlink::{self, validate_dependency_path, validate_link_path_no_parent_traversal};
 use std::collections::HashSet;
 use std::fs;
 use std::io;
@@ -40,7 +40,7 @@ pub fn log(cli: &Cli, level: &str, msg: &str) {
 pub fn dispatch(cli: &Cli) -> Result<(), String> {
     match cli.command.as_ref().unwrap_or(&Command::Deploy) {
         Command::Deploy => cmd_deploy(cli, &mut HashSet::new()),
-        Command::Undeploy => cmd_undeploy(cli),
+        Command::Undeploy => cmd_undeploy(cli, &mut HashSet::new()),
         Command::Status => cmd_status(cli),
         Command::Validate { files } => cmd_validate(cli, files),
         Command::New => cmd_new(cli),
@@ -406,7 +406,16 @@ fn cmd_deploy(cli: &Cli, visited: &mut HashSet<PathBuf>) -> Result<(), String> {
             "debug",
             &format!("dependency: {}, path: {}", dep_name, dep_path),
         );
-        let dep_dir = canon_dir.join(dep_path);
+
+        let dep_dir = match validate_dependency_path(&canon_dir, dep_path) {
+            Ok(dir) => dir,
+            Err(e) => {
+                log(cli, "error", &e);
+                success = false;
+                continue;
+            }
+        };
+
         let dep_config = dep_dir.join("xdotter.toml");
         if dep_config.exists() {
             log(cli, "debug", &format!("entering {}", dep_dir.display()));
@@ -437,7 +446,7 @@ fn cmd_deploy(cli: &Cli, visited: &mut HashSet<PathBuf>) -> Result<(), String> {
     }
 }
 
-fn cmd_undeploy(cli: &Cli) -> Result<(), String> {
+fn cmd_undeploy(cli: &Cli, visited: &mut HashSet<PathBuf>) -> Result<(), String> {
     log(cli, "info", "Undeploying...");
 
     let config_path = Path::new("xdotter.toml");
@@ -450,10 +459,28 @@ fn cmd_undeploy(cli: &Cli) -> Result<(), String> {
 
     let config = Config::from_toml(&content)?;
 
+    // P0: Detect dependency cycle using canonical path
+    let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
+    let canon_dir = current_dir.canonicalize().map_err(|e| e.to_string())?;
+    if !visited.insert(canon_dir.clone()) {
+        return Err(format!(
+            "Dependency cycle detected: {} is already being processed",
+            canon_dir.display()
+        ));
+    }
+
     let mut success = true;
 
     for link in config.links.values() {
         let link_path = expand_path(link);
+
+        // SPEC: link paths must not contain `..` after `~` expansion.
+        if let Err(e) = validate_link_path_no_parent_traversal(&link_path) {
+            log(cli, "error", &e);
+            success = false;
+            continue;
+        }
+
         if link_path.is_symlink() {
             if cli.dry_run {
                 log(
@@ -497,6 +524,44 @@ fn cmd_undeploy(cli: &Cli) -> Result<(), String> {
                 "debug",
                 &format!("Link does not exist: {}", link_path.display()),
             );
+        }
+    }
+
+    // Process dependencies (same validation rules as deploy)
+    for (dep_name, dep_path) in &config.dependencies {
+        log(
+            cli,
+            "debug",
+            &format!("dependency: {}, path: {}", dep_name, dep_path),
+        );
+
+        let dep_dir = match validate_dependency_path(&canon_dir, dep_path) {
+            Ok(dir) => dir,
+            Err(e) => {
+                log(cli, "error", &e);
+                success = false;
+                continue;
+            }
+        };
+
+        let dep_config = dep_dir.join("xdotter.toml");
+        if dep_config.exists() {
+            log(cli, "debug", &format!("entering {}", dep_dir.display()));
+            if let Err(e) = std::env::set_current_dir(&dep_dir) {
+                log(cli, "error", &format!("Cannot enter dependency dir: {}", e));
+                success = false;
+                continue;
+            }
+            if let Err(e) = cmd_undeploy(cli, visited) {
+                let _ = std::env::set_current_dir(&canon_dir);
+                if e.contains("Dependency cycle detected") {
+                    return Err(e);
+                }
+                log(cli, "error", &format!("Dependency undeploy failed: {}", e));
+                success = false;
+            } else {
+                let _ = std::env::set_current_dir(&canon_dir);
+            }
         }
     }
 
@@ -573,28 +638,37 @@ mod tests {
     fn test_deploy_detects_cycle() {
         let dir = test_dir("cycle");
         let a = dir.join("a");
-        let b = dir.join("b");
-        fs::create_dir_all(&a).unwrap();
-        fs::create_dir_all(&b).unwrap();
+        let sub = a.join("sub");
+        fs::create_dir_all(&sub).unwrap();
 
-        // a depends on b, b depends on a → cycle
+        // a/sub has a dependency on itself via a symlink → cycle
+        // Create a symlink inside a/sub that points to a/sub itself
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&sub, sub.join("self_link")).unwrap();
+        }
+        #[cfg(windows)]
+        {
+            std::os::windows::fs::symlink_dir(&sub, sub.join("self_link")).unwrap();
+        }
+
         fs::write(
             a.join("xdotter.toml"),
             r#"
 [links]
 
 [dependencies]
-"b" = "../b"
+"sub" = "sub"
 "#,
         )
         .unwrap();
         fs::write(
-            b.join("xdotter.toml"),
+            sub.join("xdotter.toml"),
             r#"
 [links]
 
 [dependencies]
-"a" = "../a"
+"self" = "self_link"
 "#,
         )
         .unwrap();
@@ -624,18 +698,17 @@ mod tests {
     fn test_deploy_no_cycle_linear() {
         let dir = test_dir("linear");
         let a = dir.join("a");
-        let b = dir.join("b");
-        fs::create_dir_all(&a).unwrap();
+        let b = a.join("b");
         fs::create_dir_all(&b).unwrap();
 
-        // a depends on b, but b does NOT depend on a → no cycle
+        // a depends on subdir b, b has no dependencies → no cycle
         fs::write(
             a.join("xdotter.toml"),
             r#"
 [links]
 
 [dependencies]
-"b" = "../b"
+"b" = "b"
 "#,
         )
         .unwrap();
@@ -717,6 +790,290 @@ mod tests {
 
         // Cleanup
         let _ = fs::remove_file(&target);
+        cleanup(&dir);
+    }
+
+    // ============================================================
+    // Link path `..` rejection tests (SPEC safety rule)
+    // ============================================================
+
+    #[test]
+    #[serial]
+    fn test_deploy_rejects_link_path_with_dotdot() {
+        let dir = test_dir("link_dotdot");
+        fs::write(dir.join("source.txt"), "content").unwrap();
+        fs::write(
+            dir.join("xdotter.toml"),
+            r#"
+[links]
+"source.txt" = "/tmp/../etc/passwd"
+"#,
+        )
+        .unwrap();
+
+        let cli = make_cli();
+        let prev = std::env::current_dir().unwrap();
+        let _old_home = set_unique_home();
+        std::env::set_current_dir(&dir).unwrap();
+        let mut visited = HashSet::new();
+        let result = cmd_deploy(&cli, &mut visited);
+        std::env::set_current_dir(&prev).unwrap();
+        restore_home(_old_home);
+
+        let err_msg = result.expect_err("Should reject link path with ..");
+        assert!(
+            err_msg.contains("Some links failed to deploy"),
+            "Deploy should fail on link with ..: {}",
+            err_msg
+        );
+        cleanup(&dir);
+    }
+
+    #[test]
+    #[serial]
+    fn test_undeploy_rejects_link_path_with_dotdot() {
+        let dir = test_dir("undep_dotdot");
+        fs::write(
+            dir.join("xdotter.toml"),
+            r#"
+[links]
+"source.txt" = "/tmp/../etc/passwd"
+"#,
+        )
+        .unwrap();
+
+        let cli = make_cli();
+        let prev = std::env::current_dir().unwrap();
+        let _old_home = set_unique_home();
+        std::env::set_current_dir(&dir).unwrap();
+        let mut visited = HashSet::new();
+        let result = cmd_undeploy(&cli, &mut visited);
+        std::env::set_current_dir(&prev).unwrap();
+        restore_home(_old_home);
+
+        let err_msg = result.expect_err("Should reject link path with ..");
+        assert!(
+            err_msg.contains("Some links failed to undeploy"),
+            "Undeploy should fail on link with ..: {}",
+            err_msg
+        );
+        cleanup(&dir);
+    }
+
+    // ============================================================
+    // Dependency path validation tests (SPEC safety rule)
+    // ============================================================
+
+    #[test]
+    #[serial]
+    fn test_deploy_rejects_dependency_with_absolute_path() {
+        let dir = test_dir("dep_abs");
+        fs::create_dir_all(dir.join("sub")).unwrap();
+        fs::write(dir.join("sub/xdotter.toml"), "[links]\n").unwrap();
+        fs::write(
+            dir.join("xdotter.toml"),
+            r#"
+[links]
+
+[dependencies]
+"bad" = "/absolute/path"
+"#,
+        )
+        .unwrap();
+
+        let cli = make_cli();
+        let prev = std::env::current_dir().unwrap();
+        let _old_home = set_unique_home();
+        std::env::set_current_dir(&dir).unwrap();
+        let mut visited = HashSet::new();
+        let result = cmd_deploy(&cli, &mut visited);
+        std::env::set_current_dir(&prev).unwrap();
+        restore_home(_old_home);
+
+        let err_msg = result.expect_err("Should reject absolute dependency path");
+        assert!(
+            err_msg.contains("Some links failed to deploy"),
+            "Deploy should fail on absolute dependency: {}",
+            err_msg
+        );
+        cleanup(&dir);
+    }
+
+    #[test]
+    #[serial]
+    fn test_deploy_rejects_dependency_with_dotdot() {
+        let dir = test_dir("dep_dotdot");
+        fs::write(
+            dir.join("xdotter.toml"),
+            r#"
+[links]
+
+[dependencies]
+"bad" = "../escape"
+"#,
+        )
+        .unwrap();
+
+        let cli = make_cli();
+        let prev = std::env::current_dir().unwrap();
+        let _old_home = set_unique_home();
+        std::env::set_current_dir(&dir).unwrap();
+        let mut visited = HashSet::new();
+        let result = cmd_deploy(&cli, &mut visited);
+        std::env::set_current_dir(&prev).unwrap();
+        restore_home(_old_home);
+
+        let err_msg = result.expect_err("Should reject dependency with ..");
+        assert!(
+            err_msg.contains("Some links failed to deploy"),
+            "Deploy should fail on dependency with ..: {}",
+            err_msg
+        );
+        cleanup(&dir);
+    }
+
+    // ============================================================
+    // Undeploy recursive dependency tests
+    // ============================================================
+
+    #[test]
+    #[serial]
+    fn test_undeploy_recursive_processes_dependencies() {
+        let dir = test_dir("undep_recursive");
+        let sub = dir.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+
+        let target = format!("/tmp/xd_undep_target_{}.txt", std::process::id());
+        let sub_target = format!("/tmp/xd_undep_sub_target_{}.txt", std::process::id());
+
+        fs::write(dir.join("source.txt"), "parent").unwrap();
+        fs::write(sub.join("subsource.txt"), "child").unwrap();
+
+        fs::write(
+            dir.join("xdotter.toml"),
+            format!(
+                r#"
+[links]
+"source.txt" = "{}"
+
+[dependencies]
+"sub" = "sub"
+"#,
+                target
+            ),
+        )
+        .unwrap();
+        fs::write(
+            sub.join("xdotter.toml"),
+            format!(
+                r#"
+[links]
+"subsource.txt" = "{}"
+"#,
+                sub_target
+            ),
+        )
+        .unwrap();
+
+        // First deploy to create symlinks
+        let cli_base = make_cli();
+        let cli = Cli {
+            quiet: false,
+            ..cli_base
+        };
+        let prev = std::env::current_dir().unwrap();
+        let _old_home = set_unique_home();
+        std::env::set_current_dir(&dir).unwrap();
+        let mut visited = HashSet::new();
+        let deploy_result = cmd_deploy(&cli, &mut visited);
+        assert!(
+            deploy_result.is_ok(),
+            "Deploy should succeed: {:?}",
+            deploy_result
+        );
+        assert!(Path::new(&target).is_symlink());
+        assert!(Path::new(&sub_target).is_symlink());
+
+        // Now undeploy — should remove both links
+        let cli_quiet = make_cli();
+        let mut visited = HashSet::new();
+        let undep_result = cmd_undeploy(&cli_quiet, &mut visited);
+        std::env::set_current_dir(&prev).unwrap();
+        restore_home(_old_home);
+
+        assert!(
+            undep_result.is_ok(),
+            "Undeploy should succeed: {:?}",
+            undep_result
+        );
+        assert!(
+            !Path::new(&target).exists(),
+            "Parent link should be removed"
+        );
+        assert!(
+            !Path::new(&sub_target).exists(),
+            "Child dependency link should be removed"
+        );
+
+        let _ = fs::remove_file(&target);
+        let _ = fs::remove_file(&sub_target);
+        cleanup(&dir);
+    }
+
+    #[test]
+    #[serial]
+    fn test_undeploy_detects_dependency_cycle() {
+        let dir = test_dir("undep_cycle");
+        let a = dir.join("a");
+        let sub = a.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+
+        // a/sub depends on itself via symlink → cycle
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&sub, sub.join("self_link")).unwrap();
+        }
+        #[cfg(windows)]
+        {
+            std::os::windows::fs::symlink_dir(&sub, sub.join("self_link")).unwrap();
+        }
+
+        fs::write(
+            a.join("xdotter.toml"),
+            r#"
+[links]
+
+[dependencies]
+"sub" = "sub"
+"#,
+        )
+        .unwrap();
+        fs::write(
+            sub.join("xdotter.toml"),
+            r#"
+[links]
+
+[dependencies]
+"self" = "self_link"
+"#,
+        )
+        .unwrap();
+
+        let cli = make_cli();
+        let prev = std::env::current_dir().unwrap();
+        let _old_home = set_unique_home();
+        std::env::set_current_dir(&a).unwrap();
+        let mut visited = HashSet::new();
+        let result = cmd_undeploy(&cli, &mut visited);
+        std::env::set_current_dir(&prev).unwrap();
+        restore_home(_old_home);
+
+        let err_msg = result.expect_err("Should detect cycle during undeploy");
+        assert!(
+            err_msg.contains("Dependency cycle detected") || err_msg.contains("cycle"),
+            "Error should mention cycle: {}",
+            err_msg
+        );
         cleanup(&dir);
     }
 }
