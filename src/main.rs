@@ -37,8 +37,10 @@ pub fn expand_path(path: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_expand_path_tilde() {
         // Test with HOME set
         std::env::set_var("HOME", "/home/testuser");
@@ -47,6 +49,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_expand_path_tilde_only() {
         std::env::set_var("HOME", "/home/testuser");
         let result = expand_path("~/");
@@ -54,6 +57,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_expand_path_absolute() {
         // Absolute path should not be changed
         std::env::set_var("HOME", "/home/testuser");
@@ -62,6 +66,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_expand_path_relative() {
         // Relative path should not be changed
         std::env::set_var("HOME", "/home/testuser");
@@ -70,6 +75,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_expand_path_unicode_home() {
         std::env::set_var("HOME", "/home/ユーザー");
         let result = expand_path("~/.config/設定.txt");
@@ -77,6 +83,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_expand_path_no_home() {
         // When HOME is not set, should fallback to dirs::home_dir or empty
         let old_home = std::env::var("HOME").ok();

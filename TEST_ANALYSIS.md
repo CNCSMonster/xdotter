@@ -1,25 +1,25 @@
 # xdotter 测试分析与 CI 方案
 
-## 测试总览: **102 个测试全部通过** ✅
+## 测试总览: **111 个测试全部通过** ✅
 
 | 层级 | 测试数 | 状态 | 运行方式 |
 |------|--------|------|----------|
-| **单元测试** | 43 | ✅ 全部通过 | `cargo test` |
+| **单元测试** | 52 | ✅ 全部通过 | `cargo test` |
 | **E2E 测试** | 59 | ✅ 全部通过 | `bash scripts/test-rust.sh` |
-| **总计** | **102** | **✅ 全部通过** | — |
+| **总计** | **111** | **✅ 全部通过** | — |
 
 ---
 
-## 一、单元测试分布 (43 个)
+## 一、单元测试分布 (52 个)
 
 ### 按模块
 
 | 模块 | 测试数 | 覆盖内容 |
 |------|--------|---------|
-| `permissions.rs` | 20 | 权限匹配、SSH/GPG 路径识别、glob 匹配、敏感文件模式 (id_rsa, *.pem, *.key, *.gpg, ~/.bashrc, ~/.zshrc, ~/.Xauthority 等) |
-| `symlink.rs` | 8 | 路径冲突、循环检测、环形引用检测 |
+| `permissions.rs` | 22 | 权限匹配、SSH/GPG 路径识别、SSH 公钥/私钥区分、glob 匹配、敏感文件模式 (id_rsa, *.pem, *.key, *.gpg, ~/.bashrc, ~/.zshrc, ~/.Xauthority 等) |
+| `symlink.rs` | 15 | 路径冲突、循环检测、环形引用检测、相对路径检查、`--force` 安全语义 |
 | `main.rs` | 6 | `expand_path` (~ 展开、绝对/相对路径、Unicode) |
-| `config.rs` | 6 | TOML/JSON 解析、空配置、格式检测 |
+| `config.rs` | 6 | TOML 解析、空配置、格式检测 |
 | `commands/mod.rs` | 3 | 依赖循环检测、symlink 源文件拒绝 |
 
 ### 完整测试列表
@@ -44,9 +44,11 @@ permissions::tests::test_get_required_permission_not_sensitive
 permissions::tests::test_get_required_permission_pattern_id_rsa
 permissions::tests::test_get_required_permission_pattern_key
 permissions::tests::test_get_required_permission_pattern_pem
+permissions::tests::test_get_required_permission_pub_suffix_private_key_fails_closed
 permissions::tests::test_get_required_permission_shell_config
 permissions::tests::test_get_required_permission_ssh_authorized_keys
 permissions::tests::test_get_required_permission_ssh_ed25519
+permissions::tests::test_get_required_permission_ssh_public_keys
 permissions::tests::test_get_required_permission_ssh_rsa
 permissions::tests::test_get_required_permission_tilde_path
 permissions::tests::test_get_required_permission_token_file
@@ -59,6 +61,13 @@ permissions::tests::test_glob_match_suffix
 
 symlink::tests::test_detect_circular_direct_parent
 symlink::tests::test_detect_circular_scenario
+symlink::tests::test_force_rejects_link_inside_source_without_deleting
+symlink::tests::test_force_rejects_relative_link_inside_source_without_deleting
+symlink::tests::test_force_rejects_same_source_and_link_without_deleting
+symlink::tests::test_force_rejects_source_inside_existing_link_dir_without_deleting
+symlink::tests::test_force_replaces_existing_regular_file_when_safe
+symlink::tests::test_force_replaces_existing_wrong_symlink_when_safe
+symlink::tests::test_force_skips_existing_correct_symlink
 symlink::tests::test_no_circular_when_not_symlink
 symlink::tests::test_no_loop_simple
 symlink::tests::test_no_loop_through_symlink
@@ -89,7 +98,7 @@ tests::test_expand_path_unicode_home
 | 错误处理 | 6 | nonexistent source/config, invalid TOML, empty config, unicode, absolute path |
 | 配置格式 | 3 | comments, whitespace, single quotes |
 | 权限检查 | 6 | check SSH key, fix SSH key, dry-run, pattern matching, deploy-integrated, multiple sensitive files |
-| Validate 命令 | 7 | valid/invalid TOML/JSON, default files, multiple files, nonexistent file |
+| Validate 命令 | 7 | valid/invalid TOML, default files, multiple files, nonexistent file, unsupported format |
 | Completion 命令 | 5 | bash, zsh, fish, no shell, invalid shell |
 | Deploy 自动验证 | 3 | auto-validation invalid, no-validate flag, auto-validation valid |
 | Symlink 安全 | 6 | loop detection, circular scenario, parent symlink fix, loop warning, circular detailed, parent fix interactive |

@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::Path;
 
 // Permission requirements for sensitive paths
@@ -99,6 +100,10 @@ pub fn get_required_permission(path: &Path) -> Option<(u32, &'static str)> {
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
 
+    if let Some((mode, desc)) = ssh_key_pub_suffix_permission(path, &filename) {
+        return Some((mode, desc));
+    }
+
     for (pattern, mode, desc) in SENSITIVE_PATTERNS {
         if glob_match(pattern, &filename) {
             return Some((*mode, *desc));
@@ -106,6 +111,46 @@ pub fn get_required_permission(path: &Path) -> Option<(u32, &'static str)> {
     }
 
     None
+}
+
+fn ssh_key_pub_suffix_permission(path: &Path, filename: &str) -> Option<(u32, &'static str)> {
+    let private_name = filename.strip_suffix(".pub")?;
+    let (public_desc, private_desc) = ssh_key_descriptions(private_name)?;
+
+    match fs::read_to_string(path) {
+        Ok(content) if looks_like_ssh_public_key(&content) => Some((0o644, public_desc)),
+        _ => Some((0o600, private_desc)),
+    }
+}
+
+fn ssh_key_descriptions(private_name: &str) -> Option<(&'static str, &'static str)> {
+    if glob_match("id_rsa*", private_name) || glob_match("*_rsa", private_name) {
+        Some(("SSH RSA public key", "SSH RSA private key"))
+    } else if glob_match("id_ed25519*", private_name) || glob_match("*_ed25519", private_name) {
+        Some(("SSH Ed25519 public key", "SSH Ed25519 private key"))
+    } else if glob_match("id_ecdsa*", private_name) || glob_match("*_ecdsa", private_name) {
+        Some(("SSH ECDSA public key", "SSH ECDSA private key"))
+    } else if glob_match("id_dsa*", private_name) || glob_match("*_dsa", private_name) {
+        Some(("SSH DSA public key", "SSH DSA private key"))
+    } else {
+        None
+    }
+}
+
+fn looks_like_ssh_public_key(content: &str) -> bool {
+    let first = content.trim_start();
+    [
+        "ssh-rsa",
+        "ssh-ed25519",
+        "ssh-dss",
+        "ecdsa-sha2-nistp256",
+        "ecdsa-sha2-nistp384",
+        "ecdsa-sha2-nistp521",
+        "sk-ssh-ed25519@openssh.com",
+        "sk-ecdsa-sha2-nistp256@openssh.com",
+    ]
+    .iter()
+    .any(|prefix| first.starts_with(prefix))
 }
 
 pub fn check_permission(path: &Path, required_mode: u32) -> bool {
@@ -158,6 +203,11 @@ fn glob_match(pattern: &str, text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+
+    fn cleanup_dir(path: &Path) {
+        let _ = fs::remove_dir_all(path);
+    }
 
     #[test]
     fn test_glob_match_prefix() {
@@ -180,6 +230,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_required_permission_ssh_rsa() {
         std::env::set_var("HOME", "/home/user");
         let path = Path::new("/home/user/.ssh/id_rsa");
@@ -191,6 +242,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_required_permission_ssh_ed25519() {
         std::env::set_var("HOME", "/home/user");
         let path = Path::new("/home/user/.ssh/id_ed25519");
@@ -202,6 +254,73 @@ mod tests {
     }
 
     #[test]
+    #[serial]
+    fn test_get_required_permission_ssh_public_keys() {
+        let home = std::env::temp_dir().join(format!("xd_perm_pub_{}", std::process::id()));
+        let ssh_dir = home.join(".ssh");
+        let _ = fs::remove_dir_all(&home);
+        fs::create_dir_all(&ssh_dir).unwrap();
+        std::env::set_var("HOME", &home);
+
+        let cases = [
+            ("id_rsa.pub", "ssh-rsa AAAATEST", "SSH RSA public key"),
+            (
+                "id_ed25519.pub",
+                "ssh-ed25519 AAAATEST",
+                "SSH Ed25519 public key",
+            ),
+            (
+                "id_ecdsa.pub",
+                "ecdsa-sha2-nistp256 AAAATEST",
+                "SSH ECDSA public key",
+            ),
+            ("id_dsa.pub", "ssh-dss AAAATEST", "SSH DSA public key"),
+            (
+                "github_ed25519.pub",
+                "ssh-ed25519 AAAATEST",
+                "SSH Ed25519 public key",
+            ),
+            ("id_rsa_work.pub", "ssh-rsa AAAATEST", "SSH RSA public key"),
+        ];
+
+        for (filename, content, expected_desc) in cases {
+            let path = ssh_dir.join(filename);
+            fs::write(&path, content).unwrap();
+            let result = get_required_permission(&path);
+            assert!(result.is_some());
+            let (mode, desc) = result.unwrap();
+            assert_eq!(mode, 0o644);
+            assert_eq!(desc, expected_desc);
+        }
+
+        assert!(get_required_permission(&ssh_dir.join("not_a_key.pub")).is_none());
+
+        cleanup_dir(&home);
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_required_permission_pub_suffix_private_key_fails_closed() {
+        let home = std::env::temp_dir().join(format!("xd_perm_pub_private_{}", std::process::id()));
+        let ssh_dir = home.join(".ssh");
+        let _ = fs::remove_dir_all(&home);
+        fs::create_dir_all(&ssh_dir).unwrap();
+        std::env::set_var("HOME", &home);
+
+        let path = ssh_dir.join("id_rsa_misnamed.pub");
+        fs::write(&path, "-----BEGIN OPENSSH PRIVATE KEY-----\n").unwrap();
+
+        let result = get_required_permission(&path);
+        assert!(result.is_some());
+        let (mode, desc) = result.unwrap();
+        assert_eq!(mode, 0o600);
+        assert_eq!(desc, "SSH RSA private key");
+
+        cleanup_dir(&home);
+    }
+
+    #[test]
+    #[serial]
     fn test_get_required_permission_ssh_authorized_keys() {
         std::env::set_var("HOME", "/home/user");
         let path = Path::new("/home/user/.ssh/authorized_keys");
@@ -212,6 +331,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_required_permission_gnupg() {
         std::env::set_var("HOME", "/home/user");
         let path = Path::new("/home/user/.gnupg");
@@ -222,6 +342,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_required_permission_shell_config() {
         std::env::set_var("HOME", "/home/user");
         let path = Path::new("/home/user/.bashrc");
@@ -232,6 +353,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_required_permission_tilde_path() {
         std::env::set_var("HOME", "/home/testuser");
         let path = Path::new("/home/testuser/.ssh/id_ed25519");
@@ -242,6 +364,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_required_permission_pattern_pem() {
         let path = Path::new("/some/path/server.pem");
         let result = get_required_permission(path);
@@ -252,6 +375,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_required_permission_pattern_key() {
         let path = Path::new("/some/path/mykey.key");
         let result = get_required_permission(path);
@@ -261,6 +385,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_required_permission_pattern_id_rsa() {
         // id_rsa_custom should match id_rsa* pattern
         let path = Path::new("/some/path/id_rsa_custom");
@@ -271,6 +396,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_required_permission_not_sensitive() {
         let path = Path::new("/home/user/.config/regular_app/config.txt");
         let result = get_required_permission(path);
@@ -293,6 +419,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_required_permission_aws_credentials() {
         std::env::set_var("HOME", "/home/user");
         let path = Path::new("/home/user/.aws/credentials");
@@ -304,6 +431,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_required_permission_git_credentials() {
         std::env::set_var("HOME", "/home/user");
         let path = Path::new("/home/user/.git-credentials");
@@ -314,6 +442,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_required_permission_xauthority() {
         std::env::set_var("HOME", "/home/user");
         let path = Path::new("/home/user/.Xauthority");
@@ -324,6 +453,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_required_permission_named_ssh_key() {
         // *_ed25519 pattern
         let path = Path::new("/some/path/github_ed25519");
@@ -334,6 +464,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_required_permission_token_file() {
         // *.token pattern
         let path = Path::new("/some/path/auth.token");

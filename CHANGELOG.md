@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Project specification** — Added `SPEC.md` as the source of truth for xdotter behavior, safety semantics, testing requirements, and documentation rules.
+
+### Changed
+- **Minimal README** — Simplified README to focus on xdotter's core symlink-based workflow and link to `SPEC.md` for detailed behavior.
+
+### Fixed
+- **Documentation accuracy** — Updated test analysis to match TOML-only configuration and 111-test coverage.
+
 ---
 
 ## [0.4.1] - 2026-04-13
