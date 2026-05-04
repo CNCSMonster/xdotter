@@ -1,48 +1,48 @@
-# xdotter Specification
+# xdotter 规范
 
-## Status
+## 状态
 
-This document is the source of truth for xdotter's behavior and design. Code, tests, README, and other documentation should be updated to match this specification.
+本文档是 xdotter 行为和设计的事实来源。代码、测试、README 和其他文档都应更新为与本规范一致。
 
-## Objective
+## 目标
 
-xdotter is a small dotfiles/environment configuration deployment tool. Its job is to create and remove symbolic links from files or directories in a user-controlled dotfile repository to target locations such as the user's `$HOME`.
+xdotter 是一个小型 dotfiles/环境配置部署工具。它的职责是从用户控制的 dotfile 仓库中的文件或目录，向目标位置（例如用户的 `$HOME`）创建和删除符号链接。
 
-The core model is simple:
+核心模型很简单：
 
 ```text
-source file or directory in repo  ->  symbolic link at target path
+仓库中的源文件或目录  ->  目标路径上的符号链接
 ```
 
-xdotter does not copy file contents. It creates symlinks.
+xdotter 不复制文件内容。它创建符号链接。
 
-## Scope and Non-goals
+## 范围和非目标
 
-xdotter is designed for deploying a user's own dotfiles into that user's own environment, such as `$HOME`, `~/.config`, shell configuration files, SSH configuration, and similar user-controlled paths.
+xdotter 设计用于将用户自己的 dotfiles 部署到用户自己的环境中，例如 `$HOME`、`~/.config`、shell 配置文件、SSH 配置以及类似的用户可控路径。
 
-xdotter is not a sandbox, privilege boundary, package manager, backup system, or multi-user filesystem isolation tool.
+xdotter 不是沙箱、权限边界、包管理器、备份系统，也不是多用户文件系统隔离工具。
 
-xdotter does not guarantee safe behavior when deployment targets are concurrently modified by untrusted users or processes during deployment.
+当部署目标在部署过程中被不受信任的用户或进程并发修改时，xdotter 不保证行为安全。
 
-Users should avoid deploying links into world-writable or otherwise untrusted directories.
+用户应避免将链接部署到全局可写或其他不受信任的目录中。
 
-## Supported Platforms
+## 支持平台
 
 - Linux
 - macOS
-- Windows support exists through platform-specific symlink APIs, but behavior may depend on OS permissions.
+- Windows 支持通过平台特定的符号链接 API 存在，但行为可能取决于操作系统权限。
 
-## Configuration Format
+## 配置格式
 
-xdotter uses a fixed TOML configuration file named:
+xdotter 使用固定名称的 TOML 配置文件：
 
 ```text
 xdotter.toml
 ```
 
-Only TOML is part of the current supported user-facing configuration format.
+当前用户可见的受支持配置格式只有 TOML。
 
-Example:
+示例：
 
 ```toml
 [links]
@@ -55,262 +55,513 @@ Example:
 
 ### `[links]`
 
-The `[links]` table maps:
+`[links]` 表映射：
 
 ```text
 source = link
 ```
 
-- `source` is the real file or directory to expose.
-- `link` is the symlink path to create.
+- `source` 是要暴露的真实文件或目录。
+- `link` 是要创建的符号链接路径。
 
 ### `[dependencies]`
 
-The `[dependencies]` table maps dependency names to relative subdirectories that contain their own `xdotter.toml` files.
+`[dependencies]` 表将依赖名称映射到相对子目录，这些子目录包含自己的 `xdotter.toml` 文件。
 
-## Configuration Trust Model
+## 配置信任模型
 
-`xdotter.toml` is deployment configuration that may cause filesystem writes, symlink creation, file removal, directory removal, and permission changes.
+`xdotter.toml` 是部署配置，可能导致文件系统写入、创建符号链接、删除文件、删除目录和修改权限。
 
-Paths from configuration must be validated according to their role before destructive filesystem operations.
+来自配置的路径必须在执行破坏性文件系统操作之前，按照其角色进行校验。
 
-`--force` must not skip configuration safety validation.
+`--force` 不得跳过配置安全校验。
 
-`--dry-run` must perform the same safety validation as the corresponding real command, even though it must not modify the filesystem.
+`--dry-run` 必须执行与对应真实命令相同的安全校验，尽管它不得修改文件系统。
 
-`--no-validate` may skip syntax validation, but it must not skip path safety, dependency safety, or symlink topology checks.
+xdotter 不支持跳过配置解析、配置校验或安全校验。
 
-## Validation and Operation Planning
+## 校验、规划和应用生命周期
 
-xdotter separates configuration validation from operation preflight.
+xdotter 将 CLI 参数解析、配置校验、操作规划和文件系统应用分成不同阶段。
 
-`xd validate` validates `xdotter.toml` as configuration. It checks TOML syntax and static configuration rules that do not require applying a deployment or undeployment plan.
+规划不是用户可选择的模式。规划是部署和卸载命令都会执行的内部阶段。
 
-`xd deploy --dry-run` is the preflight mode for deployment. It must run the same validation and safety checks as `xd deploy`, inspect the filesystem state needed for deployment, build the deployment plan, print what would happen, and stop before modifying the filesystem.
+### CLI 参数解析阶段
 
-`xd undeploy --dry-run` is the preflight mode for undeployment. It must run the same validation and safety checks as `xd undeploy`, inspect the filesystem state needed for undeployment, build the undeployment plan, print what would happen, and stop before modifying the filesystem.
+xdotter 首先解析 CLI 参数，并确定：
 
-A separate deployment check command is not part of the current CLI model. Use `xd deploy --dry-run` or `xd undeploy --dry-run` for operation preflight.
+- 冲突处理模式：默认模式、强制模式或交互模式
+- 执行模式：应用模式或预演模式
 
-Syntax validation covers TOML parsing, table structure, and key types. It does not require filesystem state.
+如果出现 CLI 参数错误，xdotter 必须在读取配置之前失败。
 
-Safety validation covers path role rules (link path parent traversal, dependency path escape), symlink topology checks, filesystem identity checks, and permission safety. Safety validation always runs before destructive operations.
+### 配置加载和静态校验阶段
 
-Command execution follows this lifecycle:
+xdotter 加载根 `xdotter.toml`，并发现需要处理的依赖配置。
 
-1. load configuration
-2. validate configuration syntax and static path rules
-3. inspect filesystem state required by the command
-4. build an operation plan
-5. run safety checks for that plan
-6. if `--dry-run`: print the plan and stop
-7. otherwise: apply the plan
+静态配置校验覆盖 TOML 解析、表结构、字段类型，以及不需要应用部署或卸载计划即可判断的路径规则。
 
-## Path Semantics
+### 规划阶段
 
-### `~` Expansion
+规划阶段会解析路径、检查命令所需的文件系统状态、构建操作计划，并对该计划运行安全检查。
 
-Paths beginning with `~/` expand to the current user's home directory.
+规划阶段不得修改文件系统。
 
-### Source Paths
+规划阶段必须检查路径角色规则、依赖路径安全、符号链接拓扑、文件系统身份和权限安全。
 
-Source paths may be absolute, home-relative, or relative to the current configuration directory.
+配置错误和规划阻塞错误必须在应用任何文件系统修改之前被发现。
 
-A source path must exist before deployment.
+部署规划应收集根配置和所有可达依赖配置中的配置错误和规划阻塞错误。
 
-Source paths may contain parent-directory traversal (`..`) only if the resolved source remains valid and does not create invalid link/source topology.
+如果存在一个或多个配置错误或规划阻塞错误，xdotter 必须：
 
-### Link Paths
+- 报告已发现的错误
+- 以非零退出码结束
+- 不创建、删除、替换或修改任何文件系统对象
 
-Link paths describe filesystem locations that xdotter may create, remove, or replace. Therefore link paths are destructive-operation targets and are treated more strictly than source paths.
+可恢复冲突不是配置错误，也不是规划阻塞错误。可恢复冲突根据当前冲突处理模式生成对应计划，或跳过该链接并计为失败。
 
-Rules:
+### 预演或应用
 
-- Link paths may be absolute, home-relative, or relative to the current configuration directory.
-- Link paths must not contain parent-directory traversal (`..`) in any path component after `~` expansion.
-- If a link path contains `..`, deployment must fail before any filesystem modification.
-- This rule applies regardless of `--force`, `--interactive`, `--dry-run`, or `--no-validate`.
+如果规划成功，xdotter 根据执行模式处理操作计划：
 
-Rationale: link paths are destructive operation targets. Allowing `..` makes the visible path differ from the actual operation location and complicates safety checks.
+- 预演模式（`--dry-run`）：打印已验证的操作计划，然后退出，不修改文件系统。
+- 应用模式：执行已验证的操作计划，并真正修改文件系统。
 
-### Dependency Paths
+当前 CLI 模型中没有单独的部署检查命令。使用 `xd deploy --dry-run` 或 `xd undeploy --dry-run` 进行操作预检。
 
-Dependency paths identify subdirectories containing their own `xdotter.toml` files.
+### 应用阶段错误
 
-Dependency paths must be relative subdirectories under the current configuration directory.
+应用阶段仍然可能因为操作系统错误、权限不足、磁盘错误或文件系统状态变化而失败。
 
-Dependency paths must not be absolute.
+xdotter 不是事务系统。应用阶段中已经完成的操作不会因为后续失败而自动回滚。
 
-Dependency paths must not contain parent-directory traversal (`..`).
+如果某个应用阶段操作失败，xdotter 应报告错误，并最终以非零退出码结束。
 
-After resolving symlinks, a dependency directory must still be inside the current configuration directory tree.
+## 错误分类
 
-If a dependency path escapes the current configuration directory, deployment must fail before entering the dependency directory or modifying the filesystem.
+xdotter 区分不同类型的失败情况。不同错误类型发生在不同阶段，并具有不同处理方式。
 
-### Filesystem Identity
+### CLI 参数错误
 
-xdotter must not rely on string equality alone when checking whether two paths refer to the same filesystem object.
+CLI 参数错误是命令行参数本身无效。
 
-For existing paths, xdotter should compare resolved filesystem identity where practical.
+例如，同时指定互斥的 `--force` 和 `--interactive` 属于 CLI 参数错误。
 
-At minimum, before destructive operations, xdotter must reject:
+CLI 参数错误发生在配置读取之前。出现 CLI 参数错误时，xdotter 必须退出，不得读取配置、检查文件系统或修改文件系统。
 
-- source and link resolving to the same filesystem object
-- link located inside source
-- source located inside an existing real link directory that would be removed
+### 配置错误
 
-## Symlink Safety Semantics
+配置错误是 `xdotter.toml` 内容违反配置格式或静态配置规则。
 
-xdotter must prevent invalid link/source topology.
+配置错误包括 TOML 语法错误、表结构错误、字段类型错误，以及可以仅根据配置内容判断的非法路径规则。
 
-The following cases are invalid and must fail even with `--force`:
+配置错误不能通过 `--force` 或 `--interactive` 修复。
 
-- source and link resolve to the same path
-- link is inside source
-- source is inside an existing real link directory that would be removed
-- creating the symlink would create a symlink loop
-- creating the symlink would create a circular symlink scenario
+以下情况属于配置错误：
 
-A correctly existing symlink that already points to the intended source should be treated as success and skipped.
+- `xdotter.toml` 不是有效 TOML
+- `[links]` 或 `[dependencies]` 的表结构无效
+- `[links]` 或 `[dependencies]` 中的键或值类型无效
+- 源路径不是普通相对路径
+- 源路径包含父目录跳转组件 `..`
+- 链接路径不是绝对路径，也不是 home 相对路径
+- 链接路径在 `~` 展开后包含父目录跳转组件 `..`
+- 依赖路径是绝对路径
+- 依赖路径包含父目录跳转组件 `..`
 
-## Destructive Operation Semantics
+### 规划阻塞错误
 
-### `--force`
+规划阻塞错误是在操作规划阶段发现的、导致无法安全生成或应用操作计划的问题。
 
-`--force` changes how xdotter handles recoverable conflicts at the link path. It must not weaken path validation, dependency validation, permission safety, or invalid topology checks.
+规划阻塞错误通常需要结合当前文件系统状态判断，例如源路径不存在、源路径或依赖目录解析为真实路径后逃出当前配置目录树、源路径和链接路径解析到同一个文件系统对象，或创建链接会产生无效符号链接拓扑。
 
-Allowed recoverable cases include:
+规划阻塞错误不能通过 `--force` 或 `--interactive` 修复，也不能由用户确认后继续。
 
-- replacing an existing regular file at the link path
-- replacing an existing wrong symlink at the link path
-- replacing an existing directory at the link path, if doing so cannot remove the source
-- repairing a parent symlink when the existing parent symlink would otherwise cause deployment to target the source location itself
+以下情况属于规划阻塞错误：
 
-Forbidden even with `--force`:
+- 源路径不存在
+- 源路径解析为真实路径后逃出当前配置目录树
+- 依赖路径不存在
+- 依赖路径存在但不是目录
+- 依赖目录中不存在 `xdotter.toml`
+- 依赖目录解析为真实路径后逃出当前配置目录树
+- 依赖遍历检测到真实循环
+- 源路径和链接路径解析到同一个文件系统对象
+- 链接路径位于源路径内部
+- 源路径位于一个将被删除的已有真实链接目录内部
+- 创建符号链接会产生符号链接循环
+- 创建符号链接会产生循环符号链接拓扑
+- 权限修复需要修改的目标无法验证为预期源路径
 
-- source equals link
-- link inside source
-- source inside a link directory that would be removed
-- link path containing `..`
-- dependency path escaping the current configuration directory
-- symlink loop or circular symlink topology
-- permission fixing when the target cannot be verified as the expected source
+### 可恢复冲突
 
-### `--interactive`
+可恢复冲突是可以在不违反配置规则、路径安全、依赖安全、符号链接拓扑安全、文件系统身份安全和权限安全的前提下被处理的问题。
 
-`--interactive` may ask the user to confirm recoverable destructive operations.
+可恢复冲突不是配置错误，也不是规划阻塞错误。
 
-`--interactive` must not make invalid topology, invalid paths, or unsafe dependency traversal valid.
+默认模式不处理可恢复冲突。强制模式自动处理可恢复冲突。交互模式在用户确认后处理可恢复冲突。
 
-### `--dry-run`
+权限问题属于可恢复冲突。默认模式应跳过该链接并计为失败；强制模式应在安全验证通过后修复权限；交互模式应询问用户是否修复权限。
 
-`--dry-run` must not modify the filesystem.
+### 应用阶段错误
 
-`--dry-run` must perform the same path validation, dependency validation, topology checks, and permission safety checks as the corresponding real command.
+应用阶段错误是在操作计划已经通过校验后，执行文件系统操作时发生的错误。
 
-Invalid configurations and unsafe operation plans must fail in dry-run mode. Dry-run must not describe an invalid or unsafe operation as if it would be performed.
+应用阶段错误包括创建父目录失败、删除冲突目标失败、创建符号链接失败、修改权限失败，或文件系统状态在规划后发生变化。
 
-In dry-run mode, xdotter may report intended operations, but must not:
+## 路径语义
 
-- create files or directories
-- remove files, directories, or symlinks
-- create symlinks
-- change permissions
+### 配置目录
 
-### Race Safety and Fail-Closed Behavior
+每个 `xdotter.toml` 都有一个配置目录。配置目录是该 `xdotter.toml` 所在目录。
 
-xdotter assumes deployment targets are normally located in user-controlled directories.
+相对源路径和依赖路径都相对于声明它们的配置目录解析，而不是相对于进程启动时的当前工作目录。
 
-Adversarial concurrent mutation of deployment paths by untrusted users or processes is not a supported use case.
+链接路径是部署目标，必须显式指向 home 目录下的位置或绝对位置，不支持普通相对路径。
 
-However, before destructive operations, xdotter must validate the target state relevant to that operation.
+### `~` 展开
 
-If the target state is missing, ambiguous, or no longer satisfies the safety preconditions, xdotter must fail closed rather than continue.
+只有以 `~/` 开头的路径会展开为当前用户的 home 目录。
 
-Destructive operations include:
+单独的 `~` 和 `~user` 形式不属于当前支持语义。
 
-- removing an existing link path
-- recursively removing an existing directory at a link path
-- replacing an existing path
-- removing a parent symlink as a repair action
-- changing permissions
+`~` 展开只发生在路径开头；路径中间的 `~` 不会展开。
 
-## Permission Semantics
+### 源路径
 
-xdotter may check or fix permissions for sensitive target paths during deployment.
+源路径用于标识当前配置目录树内要暴露的真实文件或目录。
 
-Permission checks are based on the link target path, not only the source filename.
+源路径必须是普通相对路径，并相对于声明它的配置目录解析。
 
-Permission checks must fail closed. If xdotter cannot read metadata for a path that requires permission checking, it must report a permission issue instead of treating the path as valid.
+源路径不得是绝对路径，也不得是 home 相对路径。
 
-Before fixing permissions, xdotter must verify that the link still resolves to the expected source.
+源路径不得包含父目录跳转组件 `..`。
 
-If the link no longer resolves to the expected source, or the expected target cannot be verified, permission fixing must fail without changing permissions.
+源路径在部署前必须存在。
 
-### SSH Keys
+源路径解析为真实路径后，必须仍然位于当前配置目录树内，并且不得产生无效的链接/源路径拓扑。
 
-SSH private keys should use restrictive permissions such as `0600`.
+### 链接路径
 
-SSH public keys may use `0644`, but only when the file content looks like an SSH public key.
+链接路径描述 xdotter 可以创建、删除或替换的文件系统位置。因此，链接路径是破坏性操作目标，比源路径受到更严格的处理。
 
-A `.pub` filename alone is not enough to classify a file as public. If a `.pub` file with an SSH key-like name cannot be read or does not look like a public key, xdotter must fail closed and treat it as private-key sensitive.
+规则：
 
-## Dependency Semantics
+- 链接路径必须是绝对路径或 home 相对路径。
+- 链接路径不得是普通相对路径。
+- 链接路径在 `~/` 展开之后，任何路径组件都不得包含父目录跳转（`..`）。
+- 如果链接路径是普通相对路径或包含 `..`，属于配置错误，部署必须在任何文件系统修改之前失败。
+- 无论是否使用 `--force`、`--interactive` 或 `--dry-run`，该规则都适用。
 
-Deploying a configuration should recursively deploy dependency configurations declared under `[dependencies]`.
+理由：链接路径是破坏性操作目标。要求链接路径显式指向 home 目录或绝对位置，可以减少误解和误操作。允许普通相对路径或 `..` 会导致可见路径与实际操作位置不同，并使安全检查复杂化。
 
-Dependency traversal must remain within the current configuration directory tree according to Dependency Path rules.
+### 依赖路径
 
-Deploy and undeploy must apply the same dependency path validation rules before traversing dependency configurations.
+依赖路径用于标识当前配置目录树内包含自己 `xdotter.toml` 的子模块目录。
 
-Dependency traversal must detect true cycles. A shared dependency in a dependency graph is not necessarily a cycle.
+依赖路径必须是相对于当前配置目录的普通相对路径。
 
-Undeploy behavior should remain consistent with deploy behavior when dependencies are supported.
+依赖路径不得是绝对路径。
 
-## Commands
+依赖路径不得包含父目录跳转组件 `..`。
+
+依赖路径的目标必须存在，必须是目录，并且必须包含自己的 `xdotter.toml`。
+
+依赖目录解析为真实路径后，仍然必须位于当前配置目录树内。
+
+如果依赖目录不存在、不是目录、缺少 `xdotter.toml`，或解析为真实路径后逃出当前配置目录树，部署必须在进入该依赖目录或修改文件系统之前失败。
+
+### 文件系统身份
+
+检查两个路径是否指向同一个文件系统对象时，xdotter 不得只依赖字符串相等。
+
+对于已存在的路径，xdotter 应在可行时比较解析后的文件系统身份。
+
+在破坏性操作之前，xdotter 至少必须拒绝：
+
+- 源路径和链接路径解析到同一个文件系统对象
+- 链接路径位于源路径内部
+- 源路径位于一个将被删除的已有真实链接目录内部
+
+## 符号链接安全语义
+
+xdotter 必须防止无效的链接/源路径拓扑。
+
+以下情况无效，即使使用 `--force` 也必须失败：
+
+- 源路径和链接路径解析到同一路径
+- 链接路径位于源路径内部
+- 源路径位于一个将被删除的已有真实链接目录内部
+- 创建该符号链接会产生符号链接循环
+- 创建该符号链接会产生循环符号链接场景
+
+已经存在且正确指向预期源路径的符号链接，应视为成功并跳过。
+
+## 执行模型
+
+xdotter 将“冲突处理模式”和“执行模式”分开定义。
+
+冲突处理模式决定 xdotter 如何处理链接路径上的可恢复冲突。
+
+执行模式决定 xdotter 是否真正修改文件系统。
+
+### 冲突处理模式
+
+部署时恰好有一种冲突处理模式处于启用状态：
+
+- 默认模式
+- 强制模式（`--force`）
+- 交互模式（`--interactive`）
+
+当用户没有指定 `--force` 或 `--interactive` 时，使用默认模式。
+
+`--force` 和 `--interactive` 是互斥的冲突处理模式。如果用户同时指定二者，CLI 参数解析必须失败，命令不得进入配置读取、部署规划或文件系统修改阶段。
+
+#### 默认模式
+
+默认模式是保守模式。
+
+默认模式可以：
+
+- 创建不存在的链接
+- 跳过已经正确部署的链接
+
+默认模式不会自动替换链接路径上已有的普通文件、目录、错误符号链接或损坏符号链接。
+
+如果链接路径存在可恢复冲突，默认模式应跳过该链接并计为失败，最终导致命令以非零退出码结束。
+
+#### 强制模式（`--force`）
+
+强制模式会自动处理链接路径上的可恢复冲突。
+
+强制模式可以在安全校验通过的前提下：
+
+- 替换链接路径上已有的普通文件
+- 替换链接路径上已有的错误符号链接
+- 替换链接路径上已有的损坏符号链接
+- 替换链接路径上已有的目录，前提是这样做不会删除或包含源路径
+- 当已有父级符号链接否则会导致部署目标指向源位置本身时，修复该父级符号链接
+
+强制模式不能绕过配置校验、路径安全、依赖安全、符号链接拓扑安全、文件系统身份检查或权限安全检查。
+
+#### 交互模式（`--interactive`）
+
+交互模式会在处理可恢复的破坏性操作之前询问用户。
+
+交互模式可以在用户确认后处理强制模式允许处理的同一类可恢复冲突。
+
+交互模式不能让非法配置、不安全路径、无效符号链接拓扑或不安全依赖遍历变为合法。
+
+对于不能由用户确认解决的问题，xdotter 必须直接报错，而不是询问用户是否继续。
+
+如果用户拒绝某个必要操作，xdotter 应跳过该链接并计为失败，最终导致命令以非零退出码结束。
+
+#### 模式关系
+
+默认模式、强制模式和交互模式是互斥的冲突处理模式。
+
+`--dry-run` 不属于冲突处理模式；它可以和三种冲突处理模式中的任意一种组合使用。
+
+### 执行模式
+
+部署和卸载命令都有两种执行模式：
+
+- 应用模式：默认执行模式。通过校验的操作会真正应用到文件系统。
+- 预演模式（`--dry-run`）：只进行加载、校验、规划和输出，不修改文件系统。
+
+`--dry-run` 不属于冲突处理模式。它可以和默认模式、强制模式或交互模式组合使用。
+
+允许的组合包括：
+
+```text
+xd deploy
+xd deploy --dry-run
+xd deploy --force
+xd deploy --force --dry-run
+xd deploy --interactive
+xd deploy --interactive --dry-run
+```
+
+不允许的组合包括：
+
+```text
+xd deploy --force --interactive
+xd deploy --force --interactive --dry-run
+```
+
+在预演模式下，xdotter 必须执行与对应真实命令相同的配置加载、路径校验、依赖校验、符号链接拓扑检查、文件系统身份检查和权限安全检查。
+
+无效配置和不安全操作计划在预演模式下必须失败。预演模式不得把无效或不安全操作描述成仿佛将会执行。
+
+预演模式可以报告所选冲突处理模式下将要执行的操作，但不得：
+
+- 创建文件或目录
+- 删除文件、目录或符号链接
+- 创建符号链接
+- 修改权限
+- 询问用户确认
+
+### 竞态安全和失败关闭行为
+
+xdotter 假设部署目标通常位于用户控制的目录中。
+
+不支持由不受信任用户或进程对部署路径进行对抗性并发修改。
+
+尽管如此，当在执行破坏性操作前无法验证目标状态时，xdotter 应失败关闭，而不是执行可能不安全的操作。
+
+破坏性操作包括：
+
+- 删除文件
+- 删除目录
+- 删除符号链接
+- 替换已有路径
+- 将父级符号链接作为修复动作删除
+- 修改权限
+
+## 输出语义
+
+xdotter 将命令结果输出和日志/诊断输出分开处理。
+
+命令结果输出是命令的主要结果，例如 `xd status` 的状态摘要、`xd deploy --dry-run` 的操作计划、`xd completion` 的补全脚本和 `xd version` 的版本号。命令结果应输出到 stdout。
+
+日志/诊断输出用于展示进度、普通操作信息、调试信息、警告和错误。
+
+xdotter 使用可重复的 `-v/--verbose` 控制日志详细程度：
+
+- 无 `-v`：输出命令结果、警告和错误
+- `-v`：额外输出普通操作信息
+- `-vv`：额外输出调试信息
+- `-vvv`：额外输出跟踪级细节
+
+超过三次 `-v` 时，行为等同于 `-vvv`。
+
+警告和错误必须输出到 stderr，且不得被隐藏。
+
+普通进度信息、成功信息、调试信息和跟踪信息受 `-v` 级别控制。
+
+xdotter 不提供完全静默模式。
+
+## 权限和敏感文件语义
+
+xdotter 不禁止用户部署隐私文件或敏感文件。
+
+如果链接路径匹配已知敏感文件类型，xdotter 应输出警告，提醒用户确认该文件确实应由 xdotter 管理。敏感文件警告不阻止部署。
+
+xdotter 默认检查已知敏感目标路径的权限。权限检查基于链接路径，而不仅仅是源文件名。
+
+如果已知敏感目标路径存在权限问题，该权限问题属于可恢复冲突：
+
+- 默认模式：跳过该链接并计为失败
+- 强制模式（`--force`）：自动修复权限并继续部署
+- 交互模式（`--interactive`）：询问用户是否修复权限；拒绝则跳过该链接并计为失败
+
+修复权限之前，xdotter 必须验证要修改的目标是该链接对应的预期源路径。
+
+如果目标无法验证为预期源路径，权限修复必须失败且不得修改权限。
+
+在预演模式（`--dry-run`）下，xdotter 可以报告将要修复的权限，但不得实际修改权限。
+
+### SSH 文件
+
+SSH 私钥可以部署，但必须输出敏感文件警告，并应使用限制性权限，例如 `0600`。
+
+SSH 公钥可以部署，并可以使用较宽松权限，例如 `0644`，但只有当文件内容看起来像 SSH 公钥时才按公钥处理。
+
+仅有 `.pub` 文件名不足以将文件分类为公钥。如果一个具有 SSH 密钥样式名称的 `.pub` 文件无法读取，或内容看起来不像公钥，xdotter 应将其视为敏感文件，并使用更严格的权限规则。
+
+## 依赖语义
+
+部署一个配置时，应递归部署 `[dependencies]` 下声明的依赖配置。
+
+依赖遍历必须根据依赖路径规则保持在当前配置目录树内。
+
+部署和卸载在遍历依赖配置之前，必须应用相同的依赖路径校验规则。
+
+依赖遍历必须检测真实循环。依赖图中的共享依赖不一定是循环。
+
+当支持依赖时，卸载行为应与部署行为保持一致。
+
+## 命令
+
+`xd status` 和 `xd deploy --dry-run` 关注的问题不同：
+
+- `xd status` 回答“当前环境是否已经按配置部署”。
+- `xd deploy --dry-run` 回答“如果现在部署，会执行什么计划”。
+
+二者都不得修改文件系统。
 
 ### `xd deploy`
 
-Default command. Reads `xdotter.toml`, validates configuration and path safety, deploys each link and recursively processes dependencies.
+默认命令。读取 `xdotter.toml`，校验配置和路径安全，部署每个链接，并递归处理依赖。
 
-Detailed deploy behavior is defined by:
-- Configuration Trust Model
-- Path Semantics (source, link, dependency, identity)
-- Symlink Safety Semantics
-- Destructive Operation Semantics (force, interactive, dry-run)
-- Permission Semantics
-- Dependency Semantics
+详细部署行为由以下部分定义：
+
+- 配置信任模型
+- 路径语义（源路径、链接路径、依赖路径、身份）
+- 符号链接安全语义
+- 执行模型（冲突处理模式、执行模式）
+- 权限和敏感文件语义
+- 依赖语义
+
+按链接路径状态划分的部署行为：
+
+| 链接路径状态 | 默认模式 | 强制模式（`--force`） | 交互模式（`--interactive`） |
+|---|---|---|---|
+| 不存在 | 创建符号链接 | 创建符号链接 | 创建符号链接 |
+| 已经是正确符号链接 | 跳过，视为成功 | 跳过，视为成功 | 跳过，视为成功 |
+| 是错误符号链接 | 可恢复冲突；跳过该链接并计为失败 | 替换 | 询问后替换；拒绝则跳过该链接并计为失败 |
+| 是损坏符号链接 | 可恢复冲突；跳过该链接并计为失败 | 替换 | 询问后替换；拒绝则跳过该链接并计为失败 |
+| 是普通文件 | 可恢复冲突；跳过该链接并计为失败 | 替换 | 询问后替换；拒绝则跳过该链接并计为失败 |
+| 是目录，且可安全替换 | 可恢复冲突；跳过该链接并计为失败 | 替换 | 询问后替换；拒绝则跳过该链接并计为失败 |
+| 已知敏感目标存在权限问题 | 可恢复冲突；跳过该链接并计为失败 | 修复权限后继续 | 询问后修复权限；拒绝则跳过该链接并计为失败 |
+| 是目录，但替换会删除或包含源路径 | 规划阻塞错误 | 规划阻塞错误 | 规划阻塞错误 |
+| 链接路径包含 `..` | 配置错误 | 配置错误 | 配置错误 |
+| 源路径不存在 | 规划阻塞错误 | 规划阻塞错误 | 规划阻塞错误 |
+| 源路径和链接路径解析到同一对象 | 规划阻塞错误 | 规划阻塞错误 | 规划阻塞错误 |
+| 链接路径位于源路径内部 | 规划阻塞错误 | 规划阻塞错误 | 规划阻塞错误 |
+| 会产生符号链接循环或循环符号链接拓扑 | 规划阻塞错误 | 规划阻塞错误 | 规划阻塞错误 |
+
+预演模式（`--dry-run`）使用同一张表构建和校验计划，但不会执行任何修改，也不会询问用户。
+
+如果任一链接在默认模式或交互模式下被跳过并计为失败，部署命令最终必须以非零退出码结束。
 
 ### `xd undeploy`
 
-Reads `xdotter.toml` and removes symlinks that match the configured links.
+读取 `xdotter.toml`，并删除与配置链接匹配的符号链接。
 
-Behavior by link path state:
+按链接路径状态划分的行为：
 
-| Link path state | Default | `--force` | `--interactive` | `--dry-run` |
-|---|---|---|---|---|
-| Is a symlink | Remove it | Remove it | Ask before removing | Print "Would remove" |
-| Exists but is not a symlink | Warning, count as failure | Warning, count as failure (still continues) | Warning, ask before removing | Print "Would remove (not a symlink)" |
-| Does not exist | Silent skip | Silent skip | Silent skip | Print "Would skip (not deployed)" |
+| 链接路径状态 | 默认模式 | 强制模式（`--force`） | 交互模式（`--interactive`） |
+|---|---|---|---|
+| 是符号链接 | 删除它 | 删除它 | 删除前询问 |
+| 存在但不是符号链接 | 警告，计为失败 | 警告，计为失败 | 警告，计为失败 |
+| 不存在 | 静默跳过，视为成功 | 静默跳过，视为成功 | 静默跳过，视为成功 |
 
-Undeploy must apply the same dependency path validation rules as deploy before traversing dependency configurations.
+卸载预演模式（`--dry-run`）使用同一张表构建和校验计划，但不会删除任何符号链接，也不会询问用户。
+
+卸载在遍历依赖配置之前，必须应用与部署相同的依赖路径校验规则。
 
 ### `xd status`
 
-Reads `xdotter.toml` and reports the current state of each configured link.
+读取 `xdotter.toml`，并报告当前环境中每个已配置链接的部署状态。
 
-Status classification:
+`xd status` 要求配置本身合法。配置错误应导致 status 失败，而不是产生状态报告。
 
-- **Deployed**: link path is a symlink pointing to a target that exists on disk
-- **Broken**: link path is a symlink but the target does not exist
-- **Not a symlink**: link path exists as a regular file or directory (not a symlink)
-- **Not deployed**: link path does not exist
+`xd status` 检查当前文件系统状态，但不构建部署或卸载计划，也不修改文件系统。
 
-If `--check-permissions` is set, status must also check permissions on deployed links and report any permission issues.
+状态分类：
 
-If `--verbose` is set, status must print all link paths including correct ones.
+- **已部署**：链接路径是符号链接，且指向一个磁盘上存在的目标
+- **损坏**：链接路径是符号链接，但目标不存在
+- **不是符号链接**：链接路径作为普通文件或目录存在（不是符号链接）
+- **未部署**：链接路径不存在
 
-Summary format at end of output:
+status 必须检查已部署链接中已知敏感目标的权限，并报告任何权限问题。
+
+`xd status -v` 应打印所有链接路径，包括正确的链接。
+
+输出末尾的摘要格式：
 
 ```text
 Status: N/M deployed
@@ -318,53 +569,43 @@ Broken links: N
 Permission issues: N
 ```
 
-### `xd validate`
-
-Validates `xdotter.toml` as configuration. Checks TOML syntax and static configuration rules that do not require applying a deployment or undeployment plan.
-
-See Validation and Operation Planning for the full semantics.
-
 ### `xd new`
 
-Creates a template `xdotter.toml` in the current directory with commented-out example sections for `[links]` and `[dependencies]`.
+在当前目录创建模板 `xdotter.toml`，其中包含注释掉的 `[links]` 和 `[dependencies]` 示例段落。
 
-If `xdotter.toml` already exists, must fail with an error.
+如果 `xdotter.toml` 已存在，必须报错失败。
 
 ### `xd completion <shell>`
 
-Generates shell completion scripts.
+生成 shell 补全脚本。
 
-Supported shells: `bash`, `zsh`, `fish`.
+支持的 shell：`bash`、`zsh`、`fish`。
 
-The completion script is printed to stdout for the user to source or redirect to a completion directory.
+补全脚本打印到 stdout，供用户 source 或重定向到补全目录。
 
 ### `xd version`
 
-Prints the xdotter version number to stdout.
+将 xdotter 版本号打印到 stdout。
 
-## Global Flags
+## 全局标志
 
 ```text
--v, --verbose      Show more information (debug-level output)
--q, --quiet        Suppress informational output; errors still go to stderr
--n, --dry-run      Preview operations without modifying the filesystem
--i, --interactive  Ask for confirmation before destructive operations
--f, --force        Allow overwriting existing targets at link paths
---check-permissions  Check sensitive file permissions during deploy or status
---fix-permissions    Fix sensitive file permissions during deploy
---no-validate        Skip syntax validation during deploy
+-v, --verbose...   增加日志详细程度，可重复使用
+-n, --dry-run      预览操作而不修改文件系统
+-i, --interactive  在破坏性操作前请求确认
+-f, --force        允许覆盖链接路径上的已有目标
 ```
 
-## Exit Codes
+## 退出码
 
-- `0`: Success — all operations completed without errors
-- `1`: Error — one or more operations failed; details printed to stderr
+- `0`：成功 —— 所有操作均无错误完成
+- `1`：错误 —— 一个或多个操作失败；详细信息打印到 stderr
 
-## Testing Requirements
+## 测试要求
 
-Behavioral changes must include regression tests.
+行为变更必须包含回归测试。
 
-Required checks before considering a change complete:
+在认为变更完成之前，需要执行的检查：
 
 ```bash
 cargo fmt
@@ -373,56 +614,75 @@ cargo clippy --all-targets -- -D warnings
 ./scripts/test-rust.sh
 ```
 
-Tests that mutate process-global state such as `HOME` or current working directory must be isolated to avoid flaky parallel test behavior.
+会修改进程全局状态（例如 `HOME` 或当前工作目录）的测试必须隔离，避免并行测试不稳定。
 
-Path safety tests must cover:
+路径安全测试必须覆盖：
 
-- link paths containing `..`
-- dependency paths that are absolute
-- dependency paths containing `..`
-- dependency paths that resolve outside the current configuration directory through symlinks
-- `xd validate` checking static configuration rules
-- `xd deploy --dry-run` acting as deployment preflight without modifying the filesystem
-- `xd undeploy --dry-run` acting as undeployment preflight without modifying the filesystem
-- `--force`, `--interactive`, `--dry-run`, and `--no-validate` not bypassing safety checks
+- 绝对源路径被拒绝
+- home 相对源路径被拒绝
+- 包含 `..` 的源路径被拒绝
+- 解析为真实路径后逃出当前配置目录树的源路径被拒绝
+- 普通相对链接路径被拒绝
+- 包含 `..` 的链接路径被拒绝
+- home 相对链接路径被接受
+- 绝对链接路径被接受
+- 绝对依赖路径被拒绝
+- 包含 `..` 的依赖路径被拒绝
+- 不存在、不是目录、缺少 `xdotter.toml` 的依赖路径被拒绝
+- 解析为真实路径后逃出当前配置目录树的依赖路径被拒绝
+- `xd deploy --dry-run` 作为部署预检且不修改文件系统
+- `xd undeploy --dry-run` 作为卸载预检且不修改文件系统
+- `--force`、`--interactive` 和 `--dry-run` 不绕过安全检查
 
-Permission safety tests must cover:
+权限安全测试必须覆盖：
 
-- metadata read failures being reported as permission issues
-- permission fixing refusing to modify permissions when the expected source cannot be verified
+- 敏感文件会产生警告但不被禁止部署
+- 默认模式下权限问题会跳过该链接并计为失败
+- 强制模式下权限问题会在验证目标后自动修复
+- 交互模式下权限问题会询问用户是否修复
+- 预演模式下权限修复只报告计划，不修改权限
+- 当预期源路径无法验证时，权限修复拒绝修改权限
 
-## Documentation Rules
+输出测试必须覆盖：
 
-- `SPEC.md` is the design source of truth.
-- `README.md` should stay minimal and user-facing.
-- `README.md` should describe xdotter as a symlink-based dotfile manager.
-- User-facing documentation should describe currently supported behavior only.
-- Do not mention unsupported configuration formats in current user-facing docs unless the topic is explicit error behavior.
+- 默认输出包含命令结果、警告和错误
+- `-v`、`-vv`、`-vvv` 逐级增加日志详细程度
+- 超过三次 `-v` 时行为等同于 `-vvv`
+- 警告和错误输出到 stderr 且不会被隐藏
 
-## Boundaries
+## 文档规则
 
-### Always
+- `SPEC.md` 是设计事实来源。
+- `README.md` 应保持简洁并面向用户。
+- `README.md` 应将 xdotter 描述为基于符号链接的 dotfile 管理器。
+- 面向用户的文档应只描述当前支持的行为。
+- 除非主题是显式错误行为，否则不要在当前用户文档中提及不支持的配置格式。
 
-- Validate configuration safety before destructive deployment.
-- Run safety checks before destructive operations.
-- Keep `--dry-run` non-mutating.
-- Keep xdotter scoped as a simple dotfiles/environment deployment tool.
-- Add tests for bug fixes and behavior changes.
+## 边界
 
-### Ask First
+### 始终
 
-- Adding a new configuration format.
-- Changing `--force` semantics.
-- Changing destructive filesystem behavior.
-- Adding new runtime dependencies.
-- Changing CI/release workflows.
-- Expanding xdotter into backup, package-management, sandboxing, or multi-user isolation responsibilities.
+- 在破坏性部署前校验配置安全。
+- 在破坏性操作前运行安全检查。
+- 保持 `--dry-run` 不修改文件系统。
+- 保持 xdotter 作为简单 dotfiles/环境部署工具的范围。
+- 为 bug 修复和行为变更添加测试。
 
-### Never
+### 先询问
 
-- Commit secrets.
-- Silently delete source files because of a configuration mistake.
-- Let `--force` override invalid link/source topology.
-- Let `--force` bypass path or dependency safety checks.
-- Let `--dry-run` mutate the filesystem.
-- Claim xdotter provides sandboxing, privilege isolation, or adversarial multi-user filesystem safety.
+- 添加新的配置格式。
+- 修改 `--force` 语义。
+- 修改破坏性文件系统行为。
+- 添加新的运行时依赖。
+- 修改 CI/发布工作流。
+- 将 xdotter 扩展为备份、包管理、沙箱或多用户隔离职责。
+
+### 永不
+
+- 提交密钥或其他秘密信息。
+- 因配置错误而静默删除源文件。
+- 让 `--force` 覆盖无效的链接/源路径拓扑。
+- 让 `--force` 绕过路径或依赖安全检查。
+- 让 `--dry-run` 修改文件系统。
+- 跳过配置解析、配置校验或安全校验。
+- 声称 xdotter 提供沙箱、权限隔离或对抗性多用户文件系统安全。
