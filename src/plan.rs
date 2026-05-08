@@ -1062,6 +1062,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn collision_lists_all_conflicting_entries() {
         std::env::set_var("HOME", "/tmp");
         let d1 = tmpdir("col1");
@@ -1085,6 +1086,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn three_way_collision_lists_all_three() {
         std::env::set_var("HOME", "/tmp");
         let d1 = tmpdir("c3a");
@@ -1109,6 +1111,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn missing_source_yields_planning_error() {
         std::env::set_var("HOME", "/tmp");
         let d = tmpdir("nosrc");
