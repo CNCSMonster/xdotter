@@ -60,3 +60,5 @@ _vendor/*
 _vendor/tomli/__pycache__/
 _vendor/argcomplete/__pycache__/
 __pycache__/
+tasks/
+run_xd
