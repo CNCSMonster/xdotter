@@ -1033,7 +1033,9 @@ fn would_create_loop(link: &Path, source_canon: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(windows))]
     use crate::config::Config;
+#[cfg(not(windows))]
     use std::sync::atomic::{AtomicU64, Ordering};
 
     #[cfg(not(windows))]
@@ -1048,6 +1050,7 @@ mod tests {
         p
     }
 
+    #[cfg(not(windows))]
     fn dc(dir: &Path, links: Vec<(&str, &str)>) -> DiscoveredConfig {
         let mut m = BTreeMap::new();
         for (k, v) in links {
