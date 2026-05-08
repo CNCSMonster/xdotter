@@ -1035,7 +1035,7 @@ mod tests {
     use super::*;
     #[cfg(not(windows))]
     use crate::config::Config;
-#[cfg(not(windows))]
+    #[cfg(not(windows))]
     use std::sync::atomic::{AtomicU64, Ordering};
 
     #[cfg(not(windows))]
