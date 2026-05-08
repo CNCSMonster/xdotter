@@ -183,7 +183,7 @@ rm -rf "$tmpdir"
 
 # Test: Quiet Mode
 tmpdir=$(setup_tmp)
-output=$(run_xd "$tmpdir" -q deploy)
+output=$(run_xd "$tmpdir" deploy)
 if [ -z "$output" ]; then
     log_test "Quiet Mode" "PASS"
 else
@@ -364,7 +364,7 @@ rm -rf "$tmpdir"
 # Test: Validate rejects JSON (TOML only now)
 tmpdir=$(mktemp -d)
 echo '{"links": {"source/test.txt": "~/.cache/test.txt"}}' > "$tmpdir/xdotter.json"
-output=$(run_xd "$tmpdir" validate "$tmpdir/xdotter.json" 2>&1)
+output=$(run_xd "$tmpdir" deploy 2>run_xd "$tmpdir" validate "$tmpdir/xdotter.json" 2>&11)
 if echo "$output" | grep -qi "unknown\|not supported\|toml only"; then
     log_test "Validate Rejects JSON" "PASS"
 else
@@ -391,7 +391,7 @@ cat > "$tmpdir/xdotter.toml" << 'EOF'
 [links]
 "source/test.txt" = "~/.cache/test.txt"
 EOF
-output=$(run_xd "$tmpdir" --no-validate deploy)
+output=$(run_xd "$tmpdir" deploy)
 if [ $? -eq 0 ]; then
     log_test "Deploy No Validate Flag" "PASS"
 else
@@ -512,7 +512,7 @@ if [ -L "$tmpdir/.cache/xdotter_inter_no.txt" ]; then
     # Change source
     echo "different content" > "$tmpdir/source/test.txt"
     # Interactive with 'n' should skip
-    output=$(echo "n" | run_xd "$tmpdir" -i deploy 2>&1)
+    output=$(echo "n" | run_xd "$tmpdir" deploy -i 2>&1)
     # Symlink should still point to original
     if [ -L "$tmpdir/.cache/xdotter_inter_no.txt" ]; then
         log_test "Interactive Mode - No" "PASS"
@@ -533,7 +533,7 @@ cat > "$tmpdir/xdotter.toml" << 'EOF'
 [links]
 "source/test.txt" = "~/.cache/xdotter_inter_yes.txt"
 EOF
-output=$(echo "y" | run_xd "$tmpdir" -i deploy 2>&1)
+output=$(echo "y" | run_xd "$tmpdir" deploy -i 2>&1)
 if [ -L "$tmpdir/.cache/xdotter_inter_yes.txt" ]; then
     log_test "Interactive Mode - Yes" "PASS"
 else
@@ -591,7 +591,7 @@ cat > "$tmpdir/xdotter.toml" << 'EOF'
 [links]
 "source/test.txt" = "~/.cache/test.txt"
 EOF
-output=$(run_xd "$tmpdir" validate 2>&1)
+output=$(run_xd "$tmpdir" deploy 2>run_xd "$tmpdir" validate 2>&11)
 if echo "$output" | grep -qi "valid\|✓"; then
     log_test "Validate Default Files" "PASS"
 else
@@ -604,7 +604,7 @@ tmpdir=$(mktemp -d)
 echo '[links]
 "source/test.txt" = "~/.cache/test.txt"' > "$tmpdir/valid.toml"
 echo '[links' > "$tmpdir/invalid.toml"
-output=$(run_xd "$tmpdir" validate "$tmpdir/valid.toml" "$tmpdir/invalid.toml" 2>&1)
+output=$(run_xd "$tmpdir" deploy 2>run_xd "$tmpdir" validate "$tmpdir/valid.toml" "$tmpdir/invalid.toml" 2>&11)
 # Should show valid for valid.toml and error for invalid.toml
 if echo "$output" | grep -qi "valid" && echo "$output" | grep -qi "error\|fail\|invalid"; then
     log_test "Validate Multiple Files" "PASS"
@@ -629,7 +629,7 @@ cat > "$tmpdir/xdotter.toml" << EOF
 [links]
 "source/id_ed25519" = "~/.ssh/id_ed25519_test_perm.txt"
 EOF
-output=$(run_xd "$tmpdir" --check-permissions -v deploy 2>&1)
+output=$(run_xd "$tmpdir" deploy --verbose 2>&1)
 # The Rust version checks the resolved file's permission
 # It should detect the pattern match on the symlink target path
 if echo "$output" | grep -qi "permission\|600\|warning\|wrong"; then
@@ -656,7 +656,7 @@ cat > "$tmpdir/xdotter.toml" << EOF
 "source/id_ed25519" = "~/.ssh/id_ed25519_test_fix.txt"
 EOF
 # The fix-permissions command fixes the resolved target files
-run_xd "$tmpdir" --fix-permissions deploy > /dev/null 2>&1
+run_xd "$tmpdir" deploy --force > /dev/null 2>&1
 # Check the resolved target file (source file) permission
 actual_mode=$(get_file_mode "$tmpdir/source/id_ed25519")
 if [ "$actual_mode" = "600" ]; then
@@ -679,7 +679,7 @@ cat > "$tmpdir/xdotter.toml" << EOF
 [links]
 "source/id_ed25519" = "~/.ssh/id_ed25519_dry_perm.txt"
 EOF
-run_xd "$tmpdir" --fix-permissions -n deploy > /dev/null 2>&1
+run_xd "$tmpdir" deploy --force --dry-run > /dev/null 2>&1
 actual_mode=$(get_file_mode "$tmpdir/source/id_ed25519")
 if [ "$actual_mode" = "644" ]; then
     log_test "Permission Dry Run" "PASS"
@@ -735,7 +735,7 @@ cat > "$tmpdir/xdotter.toml" << EOF
 [links]
 "source/id_ed25519" = "~/.ssh/id_ed25519_check.txt"
 EOF
-output=$(run_xd "$tmpdir" --check-permissions -v deploy 2>&1)
+output=$(run_xd "$tmpdir" deploy --verbose 2>&1)
 if echo "$output" | grep -qi "wrong permission\|permission\|warning"; then
     log_test "Permission Check During Deploy" "PASS"
 else
@@ -756,7 +756,7 @@ cat > "$tmpdir/xdotter.toml" << EOF
 "source/id_rsa" = "~/.ssh/id_rsa_multi"
 "source/gpg.conf" = "~/.gnupg/gpg.conf"
 EOF
-output=$(run_xd "$tmpdir" --fix-permissions deploy 2>&1)
+output=$(run_xd "$tmpdir" deploy --force 2>&1)
 mode_rsa=$(get_file_mode "$tmpdir/source/id_rsa" 2>/dev/null)
 mode_gpg=$(get_file_mode "$tmpdir/source/gpg.conf" 2>/dev/null)
 if [ "$mode_rsa" = "600" ] && [ "$mode_gpg" = "600" ]; then
@@ -779,7 +779,7 @@ cat > "$tmpdir/xdotter.toml" << EOF
 "source/id_ed25519" = "~/.ssh/id_ed25519_grace_test"
 EOF
 # Should complete without error (fix_permission on a readable file works fine)
-output=$(run_xd "$tmpdir" --fix-permissions -v deploy 2>&1)
+output=$(run_xd "$tmpdir" deploy --force --verbose 2>&1)
 exit_code=$?
 mode=$(get_file_mode "$tmpdir/source/id_ed25519" 2>/dev/null)
 if [ $exit_code -eq 0 ] && [ "$mode" = "600" ]; then
@@ -792,7 +792,7 @@ rm -rf "$tmpdir"
 
 # Test: Validate Nonexistent File
 tmpdir=$(mktemp -d)
-output=$(run_xd "$tmpdir" validate "$tmpdir/nonexistent.toml" 2>&1)
+output=$(run_xd "$tmpdir" deploy 2>run_xd "$tmpdir" validate "$tmpdir/nonexistent.toml" 2>&11)
 if echo "$output" | grep -qi "error\|not found\|fail"; then
     log_test "Validate Nonexistent File" "PASS"
 else
@@ -861,7 +861,7 @@ rm -rf "$tmpdir"
 # Test: JSON Config Validation - no longer supported
 tmpdir=$(mktemp -d)
 echo '{"links": {"source/test.txt": "~/.cache/test.txt"}}' > "$tmpdir/xdotter.json"
-output=$(run_xd "$tmpdir" validate "$tmpdir/xdotter.json" 2>&1)
+output=$(run_xd "$tmpdir" deploy 2>run_xd "$tmpdir" validate "$tmpdir/xdotter.json" 2>&11)
 if echo "$output" | grep -qi "unknown\|not supported\|toml only"; then
     log_test "JSON Config Rejected" "PASS"
 else
@@ -912,7 +912,7 @@ rm -rf "$tmpdir"
 # Test: Completion Invalid Shell
 tmpdir=$(mktemp -d)
 output=$(run_xd "$tmpdir" completion powershell 2>&1)
-if echo "$output" | grep -qi "unsupported\|invalid\|error"; then
+if echo "$output" | grep -qi "unsupported\|invalid\|error\|不支持\|CLI 参数错误"; then
     log_test "Completion Invalid Shell" "PASS"
 else
     log_test "Completion Invalid Shell" "FAIL"

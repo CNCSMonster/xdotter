@@ -67,10 +67,7 @@ impl XdError {
 
     pub fn body(&self) -> &str {
         match self {
-            XdError::Cli(s)
-            | XdError::Config(s)
-            | XdError::Planning(s)
-            | XdError::Apply(s) => s,
+            XdError::Cli(s) | XdError::Config(s) | XdError::Planning(s) | XdError::Apply(s) => s,
         }
     }
 }
@@ -152,7 +149,11 @@ mod tests {
     fn label_prefix_present() {
         assert!(XdError::cli("x").to_string().starts_with("[CLI 参数错误]"));
         assert!(XdError::config("x").to_string().starts_with("[配置错误]"));
-        assert!(XdError::planning("x").to_string().starts_with("[规划阻塞错误]"));
-        assert!(XdError::apply("x").to_string().starts_with("[应用阶段错误]"));
+        assert!(XdError::planning("x")
+            .to_string()
+            .starts_with("[规划阻塞错误]"));
+        assert!(XdError::apply("x")
+            .to_string()
+            .starts_with("[应用阶段错误]"));
     }
 }

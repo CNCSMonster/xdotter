@@ -117,7 +117,8 @@ fn visit(
 
     for (name, raw) in &cfg.dependencies {
         if let Err(e) = p::validate_dependency_path(raw) {
-            out.errors.push(decorate(&e, &toml_path, &format!("依赖 \"{name}\"")));
+            out.errors
+                .push(decorate(&e, &toml_path, &format!("依赖 \"{name}\"")));
             continue;
         }
         let dep_dir = dir.join(raw);
@@ -220,12 +221,7 @@ mod tests {
 
     fn tmpdir(tag: &str) -> PathBuf {
         let id = C.fetch_add(1, Ordering::SeqCst);
-        let p = std::env::temp_dir().join(format!(
-            "xd_disc_{}_{}_{}",
-            tag,
-            std::process::id(),
-            id
-        ));
+        let p = std::env::temp_dir().join(format!("xd_disc_{}_{}_{}", tag, std::process::id(), id));
         let _ = fs::remove_dir_all(&p);
         fs::create_dir_all(&p).unwrap();
         p
@@ -236,7 +232,11 @@ mod tests {
         let d = tmpdir("empty");
         fs::write(d.join("xdotter.toml"), "").unwrap();
         let r = discover(&d);
-        assert!(r.errors.is_empty(), "errors: {:?}", r.errors.iter().collect::<Vec<_>>());
+        assert!(
+            r.errors.is_empty(),
+            "errors: {:?}",
+            r.errors.iter().collect::<Vec<_>>()
+        );
         assert_eq!(r.configs.len(), 1);
     }
 
@@ -320,8 +320,11 @@ mod tests {
             )
             .unwrap();
             let r = discover(&d);
-            assert!(r.errors.iter().any(|e| e.is_config()),
-                "errors: {:?}", r.errors.iter().collect::<Vec<_>>());
+            assert!(
+                r.errors.iter().any(|e| e.is_config()),
+                "errors: {:?}",
+                r.errors.iter().collect::<Vec<_>>()
+            );
         }
     }
 
@@ -355,7 +358,11 @@ mod tests {
         // Reset a/xdotter.toml to empty so it doesn't fail with `..` config error.
         fs::write(d.join("a/xdotter.toml"), "").unwrap();
         let r = discover(&d);
-        assert!(r.errors.is_empty(), "errors: {:?}", r.errors.iter().collect::<Vec<_>>());
+        assert!(
+            r.errors.is_empty(),
+            "errors: {:?}",
+            r.errors.iter().collect::<Vec<_>>()
+        );
         // Root + a + shared = 3 configs, no double-visit.
         assert_eq!(r.configs.len(), 3);
     }
@@ -387,7 +394,10 @@ mod tests {
         .unwrap();
 
         let r = discover(&a);
-        assert!(r.errors.iter().any(|e| e.is_planning()),
-            "errors: {:?}", r.errors.iter().collect::<Vec<_>>());
+        assert!(
+            r.errors.iter().any(|e| e.is_planning()),
+            "errors: {:?}",
+            r.errors.iter().collect::<Vec<_>>()
+        );
     }
 }

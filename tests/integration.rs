@@ -18,12 +18,7 @@ fn xd_bin() -> &'static str {
 
 fn tmpdir(tag: &str) -> PathBuf {
     let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let p = std::env::temp_dir().join(format!(
-        "xd_it_{}_{}_{}",
-        tag,
-        std::process::id(),
-        id
-    ));
+    let p = std::env::temp_dir().join(format!("xd_it_{}_{}_{}", tag, std::process::id(), id));
     let _ = fs::remove_dir_all(&p);
     fs::create_dir_all(&p).unwrap();
     p
@@ -31,12 +26,7 @@ fn tmpdir(tag: &str) -> PathBuf {
 
 fn unique_home(tag: &str) -> PathBuf {
     let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let p = std::env::temp_dir().join(format!(
-        "xd_it_home_{}_{}_{}",
-        tag,
-        std::process::id(),
-        id
-    ));
+    let p = std::env::temp_dir().join(format!("xd_it_home_{}_{}_{}", tag, std::process::id(), id));
     let _ = fs::remove_dir_all(&p);
     fs::create_dir_all(&p).unwrap();
     p
@@ -87,9 +77,7 @@ fn force_and_interactive_are_mutually_exclusive() {
     assert_ne!(o.code, 0);
     // clap prints arg conflict to stderr.
     assert!(
-        o.stderr
-            .to_lowercase()
-            .contains("cannot be used with")
+        o.stderr.to_lowercase().contains("cannot be used with")
             || o.stderr.to_lowercase().contains("conflicts")
             || o.stderr.contains("--force"),
         "expected clap conflict diagnostic on stderr, got: {}",
@@ -239,11 +227,7 @@ fn link_path_with_dotdot_is_config_error() {
     .unwrap();
     let o = run_in(&d, &["deploy"], &h);
     assert_ne!(o.code, 0);
-    assert!(
-        o.stderr.contains("[配置错误]"),
-        "stderr: {}",
-        o.stderr
-    );
+    assert!(o.stderr.contains("[配置错误]"), "stderr: {}", o.stderr);
 }
 
 #[test]
@@ -261,11 +245,7 @@ fn missing_source_is_planning_error() {
     .unwrap();
     let o = run_in(&d, &["deploy"], &h);
     assert_ne!(o.code, 0);
-    assert!(
-        o.stderr.contains("[规划阻塞错误]"),
-        "stderr: {}",
-        o.stderr
-    );
+    assert!(o.stderr.contains("[规划阻塞错误]"), "stderr: {}", o.stderr);
 }
 
 #[test]
@@ -392,7 +372,10 @@ fn dry_run_interactive_renders_skip_not_replace() {
     .unwrap();
 
     let o = run_in(&d, &["deploy", "--interactive", "--dry-run"], &h);
-    assert_ne!(o.code, 0, "interactive dry-run declined conflicts should fail");
+    assert_ne!(
+        o.code, 0,
+        "interactive dry-run declined conflicts should fail"
+    );
     assert!(
         o.stderr.contains("[规划阻塞错误]"),
         "stderr should carry planning label; stderr: {}",

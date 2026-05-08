@@ -102,11 +102,7 @@ fn apply_one_deploy(act: &DeployAction, interactive: bool) -> StepResult {
             handle_permission(act, interactive)
         }
         DeployActionKind::SkipFailure(reason) => StepResult::SkippedFailure(XdError::planning(
-            format!(
-                "链接 {} 因可恢复冲突跳过: {}",
-                link.display(),
-                reason
-            ),
+            format!("链接 {} 因可恢复冲突跳过: {}", link.display(), reason),
         )),
         DeployActionKind::Create => {
             // Apply-stage re-check: source path must not have had symlink
@@ -190,13 +186,13 @@ fn apply_one_deploy(act: &DeployAction, interactive: bool) -> StepResult {
 fn handle_permission(act: &DeployAction, interactive: bool) -> StepResult {
     match (&act.permission_action, &act.permission_required) {
         (PermissionAction::None, _) | (PermissionAction::AlreadyOk, _) => StepResult::Success,
-        (PermissionAction::SkipFailure(reason), _) => StepResult::SkippedFailure(
-            XdError::planning(format!(
+        (PermissionAction::SkipFailure(reason), _) => {
+            StepResult::SkippedFailure(XdError::planning(format!(
                 "权限问题: {} ({})",
                 act.link_expanded.display(),
                 reason
-            )),
-        ),
+            )))
+        }
         (PermissionAction::Fix, Some((mode, label))) => {
             if interactive {
                 let prompt = format!(
@@ -257,11 +253,7 @@ fn ensure_parent_dir(link: &Path) -> Result<(), XdError> {
     if let Some(parent) = link.parent() {
         if !parent.exists() {
             fs::create_dir_all(parent).map_err(|e| {
-                XdError::apply(format!(
-                    "创建父目录失败 {}: {}",
-                    parent.display(),
-                    e
-                ))
+                XdError::apply(format!("创建父目录失败 {}: {}", parent.display(), e))
             })?;
         }
     }
@@ -306,7 +298,10 @@ fn recheck_existing_kind(link: &Path, expected: &ExistingKind) -> Result<(), XdE
     } else if ft.is_file() {
         ExistingKind::RegularFile
     } else if ft.is_dir() {
-        if fs::read_dir(link).map(|mut it| it.next().is_none()).unwrap_or(false) {
+        if fs::read_dir(link)
+            .map(|mut it| it.next().is_none())
+            .unwrap_or(false)
+        {
             ExistingKind::EmptyRealDir
         } else {
             return Err(XdError::apply(format!(
@@ -333,22 +328,12 @@ fn recheck_existing_kind(link: &Path, expected: &ExistingKind) -> Result<(), XdE
 
 fn remove_existing(link: &Path, kind: &ExistingKind) -> Result<(), XdError> {
     match kind {
-        ExistingKind::RegularFile
-        | ExistingKind::WrongSymlink
-        | ExistingKind::BrokenSymlink => fs::remove_file(link).map_err(|e| {
-            XdError::apply(format!(
-                "删除 {} 失败: {}",
-                link.display(),
-                e
-            ))
-        }),
-        ExistingKind::EmptyRealDir => fs::remove_dir(link).map_err(|e| {
-            XdError::apply(format!(
-                "删除空目录 {} 失败: {}",
-                link.display(),
-                e
-            ))
-        }),
+        ExistingKind::RegularFile | ExistingKind::WrongSymlink | ExistingKind::BrokenSymlink => {
+            fs::remove_file(link)
+                .map_err(|e| XdError::apply(format!("删除 {} 失败: {}", link.display(), e)))
+        }
+        ExistingKind::EmptyRealDir => fs::remove_dir(link)
+            .map_err(|e| XdError::apply(format!("删除空目录 {} 失败: {}", link.display(), e))),
     }
 }
 
@@ -360,7 +345,9 @@ fn target_matches_source(link: &Path, source_canon: &Path) -> bool {
             } else {
                 link.parent().map(|p| p.join(&t)).unwrap_or(t)
             };
-            abs.canonicalize().map(|c| c == source_canon).unwrap_or(false)
+            abs.canonicalize()
+                .map(|c| c == source_canon)
+                .unwrap_or(false)
         }
         Err(_) => false,
     }
@@ -422,11 +409,7 @@ fn apply_one_undeploy(act: &UndeployAction, interactive: bool) -> StepResult {
             )))
         }
         UndeployActionKind::SkipFailure(reason) => StepResult::SkippedFailure(XdError::planning(
-            format!(
-                "链接 {} 因可恢复冲突跳过: {}",
-                link.display(),
-                reason
-            ),
+            format!("链接 {} 因可恢复冲突跳过: {}", link.display(), reason),
         )),
         UndeployActionKind::DeleteCorrect
         | UndeployActionKind::DeleteBroken

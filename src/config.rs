@@ -27,13 +27,8 @@ impl Config {
     /// Parse a TOML string. Unknown top-level keys/tables and malformed types
     /// are reported as configuration errors per SPEC.
     pub fn from_toml(content: &str, source: &Path) -> Result<Self, XdError> {
-        let raw: RawConfig = basic_toml::from_str(content).map_err(|e| {
-            XdError::config(format!(
-                "{}: TOML 解析失败: {}",
-                source.display(),
-                e
-            ))
-        })?;
+        let raw: RawConfig = basic_toml::from_str(content)
+            .map_err(|e| XdError::config(format!("{}: TOML 解析失败: {}", source.display(), e)))?;
 
         Ok(Config {
             links: raw.links.unwrap_or_default(),

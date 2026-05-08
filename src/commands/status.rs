@@ -4,9 +4,8 @@ use crate::error::XdError;
 use crate::plan::{self, LinkStatus, LinkStatusRecord};
 
 pub fn run(cli: &Cli) -> Result<(), XdError> {
-    let cwd = std::env::current_dir().map_err(|e| {
-        XdError::cli(format!("无法获取当前工作目录: {}", e))
-    })?;
+    let cwd = std::env::current_dir()
+        .map_err(|e| XdError::cli(format!("无法获取当前工作目录: {}", e)))?;
     if !cwd.join("xdotter.toml").exists() {
         return Err(XdError::cli(format!(
             "当前目录 {} 中没有 xdotter.toml",
@@ -67,18 +66,11 @@ pub fn run(cli: &Cli) -> Result<(), XdError> {
     println!("Non-symlink paths: {}", non_symlink);
     println!("Permission issues: {}", perm);
 
-    let any_problem = not_deployed
-        + wrong
-        + broken
-        + source_missing
-        + source_type_invalid
-        + non_symlink
-        + perm
-        > 0;
+    let any_problem =
+        not_deployed + wrong + broken + source_missing + source_type_invalid + non_symlink + perm
+            > 0;
     if any_problem {
-        eprintln!(
-            "status: 存在未部署/错误/损坏链接、源问题、非符号链接对象或权限问题"
-        );
+        eprintln!("status: 存在未部署/错误/损坏链接、源问题、非符号链接对象或权限问题");
         std::process::exit(1);
     }
     Ok(())

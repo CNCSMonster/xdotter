@@ -35,9 +35,8 @@ pub fn run(cli: &Cli, args: &NewArgs) -> Result<(), XdError> {
         println!("Would create xdotter.toml");
         return Ok(());
     }
-    fs::write(path, TEMPLATE).map_err(|e| {
-        XdError::apply(format!("写入 {} 失败: {}", path.display(), e))
-    })?;
+    fs::write(path, TEMPLATE)
+        .map_err(|e| XdError::apply(format!("写入 {} 失败: {}", path.display(), e)))?;
     log::info(cli, "new: 模板已写入");
     println!("Created xdotter.toml");
     Ok(())

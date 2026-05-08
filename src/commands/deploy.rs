@@ -10,9 +10,8 @@ use crate::plan::{
 };
 
 pub fn run(cli: &Cli, args: &DeployArgs) -> Result<(), XdError> {
-    let cwd = std::env::current_dir().map_err(|e| {
-        XdError::cli(format!("无法获取当前工作目录: {}", e))
-    })?;
+    let cwd = std::env::current_dir()
+        .map_err(|e| XdError::cli(format!("无法获取当前工作目录: {}", e)))?;
     if !cwd.join("xdotter.toml").exists() {
         return Err(XdError::cli(format!(
             "当前目录 {} 中没有 xdotter.toml",
@@ -21,7 +20,10 @@ pub fn run(cli: &Cli, args: &DeployArgs) -> Result<(), XdError> {
     }
 
     let mode = args.conflict_mode();
-    log::info(cli, format!("deploy: 模式={:?}, dry_run={}", mode, args.dry_run));
+    log::info(
+        cli,
+        format!("deploy: 模式={:?}, dry_run={}", mode, args.dry_run),
+    );
     let disc = discover::discover(&cwd);
     log::debug(
         cli,
@@ -33,7 +35,10 @@ pub fn run(cli: &Cli, args: &DeployArgs) -> Result<(), XdError> {
         return Err(report_bag(res.errors));
     }
 
-    log::debug(cli, format!("deploy: 规划 {} 条动作", res.plan.actions.len()));
+    log::debug(
+        cli,
+        format!("deploy: 规划 {} 条动作", res.plan.actions.len()),
+    );
     if cli.verbose >= 1 {
         for a in &res.plan.actions {
             log_action(cli, a);
@@ -78,7 +83,8 @@ fn log_action(cli: &Cli, a: &DeployAction) {
 }
 
 fn report_bag(bag: ErrorBag) -> XdError {
-    bag.into_single().unwrap_or_else(|| XdError::apply("未知错误".to_string()))
+    bag.into_single()
+        .unwrap_or_else(|| XdError::apply("未知错误".to_string()))
 }
 
 fn dry_run_plan_has_failures(plan: &DeployPlan, mode: ConflictMode) -> bool {
@@ -128,14 +134,9 @@ fn print_deploy_plan(plan: &DeployPlan, mode: ConflictMode) {
                 }
                 PermissionAction::Fix => {
                     if interactive_dry_run {
-                        println!(
-                            "    perm: would skip permission fix (interactive declined)"
-                        );
+                        println!("    perm: would skip permission fix (interactive declined)");
                     } else {
-                        println!(
-                            "    perm: would fix to {:o} ({})",
-                            mode_required, label
-                        );
+                        println!("    perm: would fix to {:o} ({})", mode_required, label);
                     }
                 }
                 PermissionAction::SkipFailure(r) => {

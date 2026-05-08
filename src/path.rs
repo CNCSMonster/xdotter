@@ -108,7 +108,10 @@ pub fn normalize(p: &Path) -> PathBuf {
     for comp in p.components() {
         match comp {
             Component::CurDir => {}
-            Component::Normal(_) | Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+            Component::Normal(_)
+            | Component::ParentDir
+            | Component::RootDir
+            | Component::Prefix(_) => {
                 out.push(comp.as_os_str());
             }
         }
@@ -138,9 +141,8 @@ pub fn has_parent_traversal(p: &Path) -> bool {
 /// Filesystem-existence and symlink-component checks belong to the
 /// planning stage, not this function.
 pub fn validate_source_path(raw: &str) -> Result<(), XdError> {
-    let form = classify(raw).map_err(|m| {
-        XdError::config(format!("源路径 \"{}\" 非法: {}", raw, m))
-    })?;
+    let form =
+        classify(raw).map_err(|m| XdError::config(format!("源路径 \"{}\" 非法: {}", raw, m)))?;
     if form != PathForm::NormalRelative {
         return Err(XdError::config(format!(
             "源路径必须是普通相对路径，不得是绝对或 home 相对路径: \"{}\"",
@@ -183,9 +185,8 @@ pub fn validate_link_path(raw: &str) -> Result<(), XdError> {
         )));
     }
 
-    let form = classify(raw).map_err(|m| {
-        XdError::config(format!("链接路径 \"{}\" 非法: {}", raw, m))
-    })?;
+    let form =
+        classify(raw).map_err(|m| XdError::config(format!("链接路径 \"{}\" 非法: {}", raw, m)))?;
 
     match form {
         PathForm::NormalRelative => {
@@ -255,9 +256,8 @@ fn rest_is_empty_or_curdir_only(rest: &str) -> bool {
 
 /// Validate a dependency path string per SPEC §"依赖路径".
 pub fn validate_dependency_path(raw: &str) -> Result<(), XdError> {
-    let form = classify(raw).map_err(|m| {
-        XdError::config(format!("依赖路径 \"{}\" 非法: {}", raw, m))
-    })?;
+    let form =
+        classify(raw).map_err(|m| XdError::config(format!("依赖路径 \"{}\" 非法: {}", raw, m)))?;
     if form != PathForm::NormalRelative {
         return Err(XdError::config(format!(
             "依赖路径必须是相对路径，不得是绝对或 home 相对路径: \"{}\"",

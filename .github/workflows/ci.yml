@@ -69,10 +69,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
-      - name: Build debug binary
+      - name: Build binary
         run: cargo build
-      - name: Run E2E test suite
-        run: bash scripts/test-rust.sh
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pytest
+        run: pip install pytest
+      - name: Run SPEC compliance tests
+        run: XDOTTER_BIN=$PWD/target/debug/xd pytest tests/spec/ -v --tb=short
 
   rust-binary-size-linux:
     name: Binary Size (Linux)
@@ -149,10 +155,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
-      - name: Build debug binary
+      - name: Build binary
         run: cargo build
-      - name: Run E2E test suite
-        run: bash scripts/test-rust.sh
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pytest
+        run: pip install pytest
+      - name: Run SPEC compliance tests
+        run: XDOTTER_BIN=$PWD/target/debug/xd pytest tests/spec/ -v --tb=short
 
   rust-binary-size-macos:
     name: Binary Size (macOS)

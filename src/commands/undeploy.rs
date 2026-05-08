@@ -6,9 +6,8 @@ use crate::log;
 use crate::plan::{self, UndeployAction, UndeployActionKind, UndeployPlan};
 
 pub fn run(cli: &Cli, args: &UndeployArgs) -> Result<(), XdError> {
-    let cwd = std::env::current_dir().map_err(|e| {
-        XdError::cli(format!("无法获取当前工作目录: {}", e))
-    })?;
+    let cwd = std::env::current_dir()
+        .map_err(|e| XdError::cli(format!("无法获取当前工作目录: {}", e)))?;
     if !cwd.join("xdotter.toml").exists() {
         return Err(XdError::cli(format!(
             "当前目录 {} 中没有 xdotter.toml",
@@ -17,7 +16,10 @@ pub fn run(cli: &Cli, args: &UndeployArgs) -> Result<(), XdError> {
     }
 
     let mode = args.conflict_mode();
-    log::info(cli, format!("undeploy: 模式={:?}, dry_run={}", mode, args.dry_run));
+    log::info(
+        cli,
+        format!("undeploy: 模式={:?}, dry_run={}", mode, args.dry_run),
+    );
     let disc = discover::discover(&cwd);
     log::debug(
         cli,
@@ -29,7 +31,10 @@ pub fn run(cli: &Cli, args: &UndeployArgs) -> Result<(), XdError> {
         return Err(report_bag(res.errors));
     }
 
-    log::debug(cli, format!("undeploy: 规划 {} 条动作", res.plan.actions.len()));
+    log::debug(
+        cli,
+        format!("undeploy: 规划 {} 条动作", res.plan.actions.len()),
+    );
     if cli.verbose >= 1 {
         for a in &res.plan.actions {
             log_action(cli, a);
@@ -64,14 +69,12 @@ fn log_action(cli: &Cli, a: &UndeployAction) {
         UndeployActionKind::SkipFailure(_) => "skip",
         UndeployActionKind::NotASymlinkWarning => "warn-not-symlink",
     };
-    log::info(
-        cli,
-        format!("  {} {}", summary, a.link_expanded.display()),
-    );
+    log::info(cli, format!("  {} {}", summary, a.link_expanded.display()));
 }
 
 fn report_bag(bag: ErrorBag) -> XdError {
-    bag.into_single().unwrap_or_else(|| XdError::apply("未知错误".to_string()))
+    bag.into_single()
+        .unwrap_or_else(|| XdError::apply("未知错误".to_string()))
 }
 
 fn dry_run_plan_has_failures(plan: &UndeployPlan, mode: ConflictMode) -> bool {
@@ -106,18 +109,9 @@ fn print_undeploy_plan(plan: &UndeployPlan, mode: ConflictMode) {
 fn render_action(k: &UndeployActionKind, interactive_dry_run: bool) -> (&'static str, String) {
     match k {
         UndeployActionKind::NotPresent => ("·", "absent (silent success)".to_string()),
-        UndeployActionKind::DeleteCorrect => render_delete(
-            "correct symlink",
-            interactive_dry_run,
-        ),
-        UndeployActionKind::DeleteBroken => render_delete(
-            "broken symlink",
-            interactive_dry_run,
-        ),
-        UndeployActionKind::DeleteWrong => render_delete(
-            "wrong symlink",
-            interactive_dry_run,
-        ),
+        UndeployActionKind::DeleteCorrect => render_delete("correct symlink", interactive_dry_run),
+        UndeployActionKind::DeleteBroken => render_delete("broken symlink", interactive_dry_run),
+        UndeployActionKind::DeleteWrong => render_delete("wrong symlink", interactive_dry_run),
         UndeployActionKind::SkipFailure(r) => ("!", format!("skip: {}", r)),
         UndeployActionKind::NotASymlinkWarning => ("!", "warning: not a symlink".to_string()),
     }

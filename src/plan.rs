@@ -12,7 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::cli::ConflictMode;
-use crate::discover::{is_inside, DiscoveredConfig, Discovered};
+use crate::discover::{is_inside, Discovered, DiscoveredConfig};
 use crate::error::{ErrorBag, XdError};
 use crate::path as p;
 use crate::permissions;
@@ -259,10 +259,7 @@ struct GlobalEntry {
     link_key: PathBuf,
 }
 
-fn collect_global_links(
-    configs: &[DiscoveredConfig],
-    errors: &mut ErrorBag,
-) -> Vec<GlobalEntry> {
+fn collect_global_links(configs: &[DiscoveredConfig], errors: &mut ErrorBag) -> Vec<GlobalEntry> {
     // Per-config: validate static rules on raw source/link strings.
     // Global: detect link-path collisions and report ALL conflicting
     // declarations.
@@ -328,7 +325,6 @@ fn collect_global_links(
         )));
     }
 
-
     // Detect topological nesting: no link path may be inside another link
     // path, because the parent link would be a symlink and creating a
     // child inside it is unsafe (SPEC §"符号链接安全语义").
@@ -350,10 +346,15 @@ fn collect_global_links(
     entries
         .into_iter()
         .enumerate()
-        .filter_map(|(i, e)| if bad_indices.contains(&i) { None } else { Some(e) })
+        .filter_map(|(i, e)| {
+            if bad_indices.contains(&i) {
+                None
+            } else {
+                Some(e)
+            }
+        })
         .collect()
 }
-
 
 /// Detect pairs of link entries where one expanded link path is inside
 fn detect_link_nesting(entries: &[GlobalEntry]) -> Vec<(usize, usize)> {
@@ -402,10 +403,7 @@ fn decorate(e: &XdError, toml: &Path) -> XdError {
 // -----------------------------------------------------------------------------
 // Per-entry deploy planning
 // -----------------------------------------------------------------------------
-fn plan_one_deploy(
-    ge: &GlobalEntry,
-    mode: ConflictMode,
-) -> Result<Option<DeployAction>, XdError> {
+fn plan_one_deploy(ge: &GlobalEntry, mode: ConflictMode) -> Result<Option<DeployAction>, XdError> {
     // 1. Source must exist and be a regular file or directory; no
     //    component (final or intermediate) may be a symlink; must stay
     //    inside config dir tree.
@@ -560,7 +558,11 @@ fn plan_one_undeploy(
     let kind = match read_link_target(&ge.link_expanded) {
         LinkProbe::DoesNotExist => UndeployActionKind::NotPresent,
         LinkProbe::NotASymlink => UndeployActionKind::NotASymlinkWarning,
-        LinkProbe::Symlink { target_exists, target_abs, target_canonical } => {
+        LinkProbe::Symlink {
+            target_exists,
+            target_abs,
+            target_canonical,
+        } => {
             // Does it point to *our* configured source?
             let canonically_ours = match (&source_canonical, &target_canonical) {
                 (Some(s), Some(t)) => s == t,
@@ -581,9 +583,9 @@ fn plan_one_undeploy(
             } else {
                 // Wrong symlink — recoverable conflict.
                 match mode {
-                    ConflictMode::Default => UndeployActionKind::SkipFailure(
-                        "默认模式不删除错误符号链接".to_string(),
-                    ),
+                    ConflictMode::Default => {
+                        UndeployActionKind::SkipFailure("默认模式不删除错误符号链接".to_string())
+                    }
                     ConflictMode::Force | ConflictMode::Interactive => {
                         UndeployActionKind::DeleteWrong
                     }
@@ -697,20 +699,18 @@ fn validate_source_filesystem(source: &Path, config_dir: &Path) -> Result<PathBu
             source.display()
         )));
     }
-    let canon = source.canonicalize().map_err(|e| {
-        XdError::planning(format!(
-            "无法访问源路径 {}: {}",
-            source.display(),
-            e
-        ))
-    })?;
+    let canon = source
+        .canonicalize()
+        .map_err(|e| XdError::planning(format!("无法访问源路径 {}: {}", source.display(), e)))?;
     if !is_regular_file_or_dir(&canon) {
         return Err(XdError::planning(format!(
             "源路径不是普通文件或目录: {}",
             source.display()
         )));
     }
-    let canon_dir = config_dir.canonicalize().unwrap_or_else(|_| config_dir.to_path_buf());
+    let canon_dir = config_dir
+        .canonicalize()
+        .unwrap_or_else(|_| config_dir.to_path_buf());
     if !is_inside(&canon, &canon_dir) {
         return Err(XdError::planning(format!(
             "源路径解析后逃出当前配置目录树: {}",
@@ -724,7 +724,9 @@ fn validate_source_filesystem(source: &Path, config_dir: &Path) -> Result<PathBu
 /// a symlink. `boundary` is the config dir; everything at or above it
 /// is not the source's responsibility.
 pub(crate) fn any_symlink_component(p: &Path, boundary: &Path) -> bool {
-    let boundary = boundary.canonicalize().unwrap_or_else(|_| boundary.to_path_buf());
+    let boundary = boundary
+        .canonicalize()
+        .unwrap_or_else(|_| boundary.to_path_buf());
     let mut cur = PathBuf::new();
     for comp in p.components() {
         cur.push(comp.as_os_str());
@@ -1038,12 +1040,7 @@ mod tests {
 
     fn tmpdir(tag: &str) -> PathBuf {
         let id = C.fetch_add(1, Ordering::SeqCst);
-        let p = std::env::temp_dir().join(format!(
-            "xd_plan_{}_{}_{}",
-            tag,
-            std::process::id(),
-            id
-        ));
+        let p = std::env::temp_dir().join(format!("xd_plan_{}_{}_{}", tag, std::process::id(), id));
         let _ = fs::remove_dir_all(&p);
         fs::create_dir_all(&p).unwrap();
         p
@@ -1080,8 +1077,10 @@ mod tests {
         let v = errs.into_vec();
         assert_eq!(v.len(), 1);
         let msg = v[0].body();
-        assert!(msg.contains("a.txt") && msg.contains("b.txt"),
-            "message must list all conflicting entries: {msg}");
+        assert!(
+            msg.contains("a.txt") && msg.contains("b.txt"),
+            "message must list all conflicting entries: {msg}"
+        );
         assert!(v[0].is_config());
     }
 
