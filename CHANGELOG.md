@@ -9,12 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Project specification** — Added `SPEC.md` as the source of truth for xdotter behavior, safety semantics, testing requirements, and documentation rules.
+- **Three-stage lifecycle** — `discover → plan → apply` modules separate config loading, planning, and apply work; planning aggregates errors across the root and all reachable dependencies before reporting.
+- **Error classification labels** — Every error message now carries one of `[CLI 参数错误]` / `[配置错误]` / `[规划阻塞错误]` / `[应用阶段错误]` so users and scripts can classify failures.
+- **Global link uniqueness check** — Two or more `[links]` entries that expand to the same link path are reported as a single configuration error that enumerates **every** offending `(config file, source path)` pair.
+- **SPEC seven-line status summary** — `xd status` prints a fixed seven-line summary plus the `Status: N/M deployed` line; counters cover deployed / not-deployed / wrong / broken / source-missing / source-type-invalid / non-symlink / permission-issues.
+- **Configuration directory tree boundary** — Each `xdotter.toml` is scoped to its own directory tree; source and dependency paths must remain inside it after canonicalization.
 
-### Changed
-- **Minimal README** — Simplified README to focus on xdotter's core symlink-based workflow and link to `SPEC.md` for detailed behavior.
+### Changed (BREAKING)
+- **CLI argument model** — `--force`, `--interactive`, `--dry-run` are now command-scoped operation flags on `deploy` / `undeploy` (and `--dry-run` on `new`). `-v`/`--verbose` is the sole global diagnostic flag and is now repeatable (`-v`, `-vv`, `-vvv`). The previous global-flag layout (`xd -v deploy`) is no longer accepted.
+- **`--force` and `--interactive` are mutually exclusive** at CLI parsing time.
+- **`xd undeploy` default behavior** — Now only deletes correct or broken symlinks; wrong symlinks are recoverable conflicts requiring `--force` (auto-delete) or `--interactive` (per-link confirmation). Previously the default would delete any symlink at the link path.
+- **Permission targets restricted to the SPEC table** — Only the eight target classes listed in SPEC §"权限和敏感文件语义" are checked: `~/.ssh`, `~/.ssh/config`, `~/.ssh/authorized_keys`, `~/.ssh/id_*` (non-`.pub`), `~/.ssh/*_{rsa,ed25519,ecdsa,dsa}` (non-`.pub`), `~/.pgpass`, `~/.netrc`, `~/.gnupg`. Shell-config / AWS / Docker / npm / `*.pem` / `*.key` / `*.token` and similar entries from earlier versions are no longer subject to built-in checks. Source-content sniffing of `.pub` files has been removed; classification is based purely on the expanded link path.
+- **TOML parsing rejects unknown top-level keys/tables** as configuration errors.
+- **Apply stage stops on first failure** rather than continuing through subsequent links. Partial progress is not rolled back.
 
-### Fixed
-- **Documentation accuracy** — Updated test analysis to match TOML-only configuration and 111-test coverage.
+### Removed (BREAKING)
+- **`xd validate` subcommand** — Configuration validity is checked automatically; there is no separate validation command.
+- **Global flags** `--quiet`, `--check-permissions`, `--fix-permissions`, `--no-validate` — removed. Permission handling is now part of `deploy`'s recoverable-conflict model and is governed by the active conflict mode (default skip / `--force` fix / `--interactive` ask).
+- **JSON configuration support** — Only TOML remains supported.
+- **Built-in parent-symlink auto-replacement** — Unsafe parent components are now planning-block errors; xdotter will no longer remove or replace any parent of a link path.
+
+### Fixed (SPEC compliance audit)
+- **Apply loop semantics** — Per SPEC §"按链接路径状态划分" + §"应用阶段错误", user rejection in interactive mode and "link path is not a symlink" in undeploy are recoverable skips that count as failures but **do not stop the loop**. Previously the first such case aborted all subsequent links. Apply-stage system errors (OS errors, state re-check failures) still stop the loop as required.
+- **Sensitive-target warning** — Per SPEC §"权限和敏感文件语义", deploy now unconditionally emits a stderr warning whenever a link path matches a built-in permission target, regardless of whether the permission is already correct. Previously this warning was missing.
+- **`--interactive --dry-run` rendering** — Per SPEC §"执行模式", the dry-run output now shows recoverable conflicts as "would skip (interactive declined)" rather than promising replacement. `--force --dry-run` continues to render as "replace".
+- **Link-path ancestor topology checks** — Per SPEC §"符号链接安全语义", planning now walks **all** existing ancestors of the link path, not only the direct parent: any ancestor that is a regular file (or other non-directory) is a planning-block error, and unsafe symlinked ancestors are detected at any depth. Previously deeper-than-parent ancestors were only caught at apply time as `create_dir_all` failures.
+- **CLI-error classification label** — clap's own diagnostics (e.g. mutex flag rejections, unknown subcommand) are now wrapped with the `[CLI 参数错误]` classification prefix so all error output satisfies SPEC §"输出语义" without exception.
+- **`-v/-vv/-vvv` verbosity** — All commands now honor the verbose level: `deploy`, `undeploy`, and `new` emit progress / per-link diagnostics on stderr at appropriate levels. Previously only `status` consulted the verbosity counter.
 
 ---
 

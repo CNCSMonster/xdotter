@@ -1,100 +1,41 @@
+mod apply;
 mod cli;
 mod commands;
 mod config;
+mod discover;
+mod error;
+mod log;
+mod path;
 mod permissions;
-mod symlink;
+mod plan;
 
+use clap::error::ErrorKind;
 use clap::Parser;
-use cli::Cli;
-use std::path::PathBuf;
 
 fn main() {
-    let cli = Cli::parse();
+    // Manually parse so we can wrap CLI argument errors with the SPEC
+    // [CLI 参数错误] classification label. clap's --help/--version exits
+    // are not errors and are passed through.
+    let cli = match cli::Cli::try_parse() {
+        Ok(c) => c,
+        Err(e) => match e.kind() {
+            ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
+                // clap prints the help/version to stdout and exits 0.
+                e.exit();
+            }
+            _ => {
+                let body = e.to_string();
+                eprintln!("{}", error::XdError::cli(body));
+                std::process::exit(1);
+            }
+        },
+    };
 
-    let result = commands::dispatch(&cli);
-
-    match result {
+    match commands::dispatch(&cli) {
         Ok(()) => std::process::exit(0),
         Err(e) => {
-            commands::log(&cli, "error", &e);
+            eprintln!("{}", e);
             std::process::exit(1);
-        }
-    }
-}
-
-pub fn expand_path(path: &str) -> PathBuf {
-    if let Some(stripped) = path.strip_prefix("~/") {
-        let home = std::env::var("HOME")
-            .ok()
-            .map(PathBuf::from)
-            .or_else(dirs::home_dir)
-            .unwrap_or_default();
-        return home.join(stripped);
-    }
-    PathBuf::from(path)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serial_test::serial;
-
-    #[test]
-    #[serial]
-    fn test_expand_path_tilde() {
-        // Test with HOME set
-        std::env::set_var("HOME", "/home/testuser");
-        let result = expand_path("~/.config/file.txt");
-        assert_eq!(result, PathBuf::from("/home/testuser/.config/file.txt"));
-    }
-
-    #[test]
-    #[serial]
-    fn test_expand_path_tilde_only() {
-        std::env::set_var("HOME", "/home/testuser");
-        let result = expand_path("~/");
-        assert_eq!(result, PathBuf::from("/home/testuser/"));
-    }
-
-    #[test]
-    #[serial]
-    fn test_expand_path_absolute() {
-        // Absolute path should not be changed
-        std::env::set_var("HOME", "/home/testuser");
-        let result = expand_path("/etc/config.txt");
-        assert_eq!(result, PathBuf::from("/etc/config.txt"));
-    }
-
-    #[test]
-    #[serial]
-    fn test_expand_path_relative() {
-        // Relative path should not be changed
-        std::env::set_var("HOME", "/home/testuser");
-        let result = expand_path("relative/path.txt");
-        assert_eq!(result, PathBuf::from("relative/path.txt"));
-    }
-
-    #[test]
-    #[serial]
-    fn test_expand_path_unicode_home() {
-        std::env::set_var("HOME", "/home/ユーザー");
-        let result = expand_path("~/.config/設定.txt");
-        assert_eq!(result, PathBuf::from("/home/ユーザー/.config/設定.txt"));
-    }
-
-    #[test]
-    #[serial]
-    fn test_expand_path_no_home() {
-        // When HOME is not set, should fallback to dirs::home_dir or empty
-        let old_home = std::env::var("HOME").ok();
-        std::env::remove_var("HOME");
-
-        let result = expand_path("~/.config/file.txt");
-        // Result depends on dirs::home_dir, but should not panic
-        assert!(result.to_str().is_some());
-
-        if let Some(h) = old_home {
-            std::env::set_var("HOME", &h);
         }
     }
 }

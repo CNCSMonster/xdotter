@@ -24,37 +24,54 @@ creates links like:
 
 ```text
 ~/.zshrc        ->  <repo>/.zshrc
-~/.config/nvim ->  <repo>/.config/nvim
+~/.config/nvim  ->  <repo>/.config/nvim
 ```
 
 ## Commands
 
 ```bash
-xd deploy      # create configured symlinks
-xd undeploy    # remove configured symlinks
-xd status      # show link status
-xd validate    # validate xdotter.toml
-xd new         # create a template xdotter.toml
-xd completion  # generate shell completion
-xd version     # print version
+xd deploy [--dry-run] [--force | --interactive]   # create configured symlinks
+xd undeploy [--dry-run] [--force | --interactive] # remove configured symlinks
+xd status                                         # show link status
+xd new [--dry-run]                                # create a template xdotter.toml
+xd completion <bash|zsh|fish>                     # generate shell completion
+xd version                                        # print version
 ```
+
+`-v` / `--verbose` is the only global option and may be repeated up to three times to increase log detail (`-v`, `-vv`, `-vvv`).
+
+`--force` and `--interactive` are mutually exclusive.
 
 ## Configuration
 
 xdotter uses `xdotter.toml` in the current directory.
 
-`[links]` maps source paths to target symlink paths.
+`[links]` maps source paths to link paths. The TOML key is the source path inside this repository; the value is the link path (`~/...` or absolute) to create.
 
-`[dependencies]` maps names to relative subdirectories with their own `xdotter.toml`.
+`[dependencies]` maps names to relative subdirectories that contain their own `xdotter.toml`.
 
 ```toml
+[links]
+".zshrc" = "~/.zshrc"
+
 [dependencies]
 "nvim" = "config/nvim"
-"zsh" = "modules/zsh"
+"zsh"  = "modules/zsh"
 ```
 
-Dependency paths are relative subdirectories under the current configuration directory.
+Both tables are optional; an empty configuration is legal.
+
+## Error classes
+
+Error messages carry one of four classification prefixes:
+
+- `[CLI 参数错误]` — invalid command-line usage.
+- `[配置错误]` — `xdotter.toml` violates the static configuration rules.
+- `[规划阻塞错误]` — planning could not safely build or apply a plan.
+- `[应用阶段错误]` — error while applying a validated plan.
+
+Exit code is `0` on success, non-zero on any failure.
 
 ## Design Source of Truth
 
-Project behavior and safety rules are defined in [`SPEC.md`](SPEC.md).
+Project behavior and safety rules are defined in [`SPEC.md`](SPEC.md). When this README and SPEC disagree, SPEC wins.
