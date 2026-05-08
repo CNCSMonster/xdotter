@@ -46,7 +46,7 @@ pub fn classify(raw: &str) -> Result<PathForm, &'static str> {
             // and drive-relative forms.
             return Err("Windows 上链接路径必须是 `~/...` 或盘符绝对路径");
         }
-        return Ok(PathForm::NormalRelative);
+        Ok(PathForm::NormalRelative)
     }
     #[cfg(not(windows))]
     {

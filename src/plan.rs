@@ -1036,8 +1036,10 @@ mod tests {
     use crate::config::Config;
     use std::sync::atomic::{AtomicU64, Ordering};
 
+    #[cfg(not(windows))]
     static C: AtomicU64 = AtomicU64::new(0);
 
+    #[cfg(not(windows))]
     fn tmpdir(tag: &str) -> PathBuf {
         let id = C.fetch_add(1, Ordering::SeqCst);
         let p = std::env::temp_dir().join(format!("xd_plan_{}_{}_{}", tag, std::process::id(), id));
