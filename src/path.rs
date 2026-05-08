@@ -250,7 +250,7 @@ fn rest_is_empty_or_curdir_only(rest: &str) -> bool {
     }
     // Tokenize on `/` and `\` — accept Windows mixed seps. Anything that
     // is not "" or "." means the path goes somewhere meaningful.
-    rest.split(|c| c == '/' || c == '\\')
+    rest.split(['/', '\\'])
         .all(|seg| seg.is_empty() || seg == ".")
 }
 

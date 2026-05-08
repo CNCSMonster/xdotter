@@ -7,15 +7,13 @@
 //! `dry_run_no_apply_recheck`.
 //!
 //! Per-step result is three-state per SPEC:
-//!   - Success           — link processed.
-//!   - SkippedFailure    — recoverable conflict, user reject, or
-//!                         not-a-symlink warning. Counts as a failure
-//!                         in the totals but the loop continues with
-//!                         the next link.
-//!   - HardFailure       — apply-stage system error (OS error,
-//!                         re-check mismatch, OS-level permission fix
-//!                         failure). The loop stops immediately per
-//!                         §"应用阶段错误".
+//!   - Success — link processed.
+//!   - SkippedFailure — recoverable conflict, user reject, or
+//!     not-a-symlink warning. Counts as a failure in the totals
+//!     but the loop continues with the next link.
+//!   - HardFailure — apply-stage system error (OS error,
+//!     re-check mismatch, OS-level permission fix failure).
+//!     The loop stops immediately per §"应用阶段错误".
 
 use std::fs;
 use std::io::{self, BufRead, IsTerminal, Write};

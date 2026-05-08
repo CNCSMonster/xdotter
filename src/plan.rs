@@ -745,7 +745,7 @@ pub(crate) fn any_symlink_component(p: &Path, boundary: &Path) -> bool {
             // The boundary itself or its ancestors being symlinks is
             // outside of source-path scope; only report symlinks for
             // components strictly inside boundary.
-            if let Some(rel) = cur.strip_prefix(&boundary).ok() {
+            if let Ok(rel) = cur.strip_prefix(&boundary) {
                 if !rel.as_os_str().is_empty() {
                     return true;
                 }
