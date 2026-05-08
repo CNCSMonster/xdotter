@@ -1032,6 +1032,7 @@ fn would_create_loop(link: &Path, source_canon: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(windows))]
     use super::*;
     #[cfg(not(windows))]
     use crate::config::Config;
