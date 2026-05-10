@@ -111,7 +111,7 @@ def test_undeploy_verbose_no_duplicate_skip(run_xd, tmp_repo, unique_home):
     # Wrong symlink at link path → undeploy forces skip in default mode
     (repo / "src").write_text("my source")
     import os
-    (home / ".wrong").symlink_to("/etc/hostname")
+    (home / ".wrong").symlink_to("/etc/hosts")
     (repo / "xdotter.toml").write_text('[links]\n"src" = "~/.wrong"\n')
 
     result = run_xd(["-v", "undeploy"], cwd=repo, home=home)
