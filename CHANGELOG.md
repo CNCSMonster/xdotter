@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`--interactive --dry-run` rendering** — Per SPEC §"执行模式", the dry-run output now shows recoverable conflicts as "would skip (interactive declined)" rather than promising replacement. `--force --dry-run` continues to render as "replace".
 - **Link-path ancestor topology checks** — Per SPEC §"符号链接安全语义", planning now walks **all** existing ancestors of the link path, not only the direct parent: any ancestor that is a regular file (or other non-directory) is a planning-block error, and unsafe symlinked ancestors are detected at any depth. Previously deeper-than-parent ancestors were only caught at apply time as `create_dir_all` failures.
 - **CLI-error classification label** — clap's own diagnostics (e.g. mutex flag rejections, unknown subcommand) are now wrapped with the `[CLI 参数错误]` classification prefix so all error output satisfies SPEC §"输出语义" without exception.
+- **Verbose output non-duplication** — Per SPEC §"输出语义", `-v` no longer reports `SkipFailure` and `NotASymlinkWarning` actions twice (once in verbose per-action summary and again in the error output). Each event appears exactly once.
+- **Multi-error label preservation** — Per SPEC §"输出语义", when multiple errors are reported together (e.g. several skipped links in one deploy run), each error line now independently carries its own `[分类标签]`; the aggregation no longer wraps them under a single outer label that would misclassify lines with a different error class.
 - **`-v/-vv/-vvv` verbosity** — All commands now honor the verbose level: `deploy`, `undeploy`, and `new` emit progress / per-link diagnostics on stderr at appropriate levels. Previously only `status` consulted the verbosity counter.
 
 ---
