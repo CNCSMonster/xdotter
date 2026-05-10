@@ -1,7 +1,7 @@
 use crate::apply;
 use crate::cli::{Cli, ConflictMode, UndeployArgs};
 use crate::discover;
-use crate::error::{ErrorBag, XdError};
+use crate::error::XdError;
 use crate::log;
 use crate::plan::{self, UndeployAction, UndeployActionKind, UndeployPlan};
 
@@ -28,7 +28,7 @@ pub fn run(cli: &Cli, args: &UndeployArgs) -> Result<(), XdError> {
     let res = plan::build_undeploy_plan(disc, mode);
 
     if !res.errors.is_empty() {
-        return Err(report_bag(res.errors));
+        return Err(res.errors.into_error());
     }
 
     log::debug(
@@ -55,26 +55,26 @@ pub fn run(cli: &Cli, args: &UndeployArgs) -> Result<(), XdError> {
     print_undeploy_outcome(&outcome, &res.plan);
 
     if outcome.failures > 0 || !outcome.errors.is_empty() {
-        return Err(report_bag(outcome.errors));
+        return Err(outcome.errors.into_error());
     }
     Ok(())
 }
 
 fn log_action(cli: &Cli, a: &UndeployAction) {
+    // SkipFailure and NotASymlinkWarning are reported via ErrorBag;
+    // verbose output would duplicate that information per SPEC.
+    if matches!(a.kind, UndeployActionKind::SkipFailure(_) | UndeployActionKind::NotASymlinkWarning) {
+        return;
+    }
     let summary = match &a.kind {
         UndeployActionKind::NotPresent => "absent",
         UndeployActionKind::DeleteCorrect => "delete-correct",
         UndeployActionKind::DeleteBroken => "delete-broken",
         UndeployActionKind::DeleteWrong => "delete-wrong",
-        UndeployActionKind::SkipFailure(_) => "skip",
-        UndeployActionKind::NotASymlinkWarning => "warn-not-symlink",
+        UndeployActionKind::SkipFailure(_) => unreachable!(),
+        UndeployActionKind::NotASymlinkWarning => unreachable!(),
     };
     log::info(cli, format!("  {} {}", summary, a.link_expanded.display()));
-}
-
-fn report_bag(bag: ErrorBag) -> XdError {
-    bag.into_single()
-        .unwrap_or_else(|| XdError::apply("未知错误".to_string()))
 }
 
 fn dry_run_plan_has_failures(plan: &UndeployPlan, mode: ConflictMode) -> bool {
@@ -136,7 +136,5 @@ fn print_undeploy_outcome(outcome: &apply::ApplyOutcome, plan: &UndeployPlan) {
         outcome.failures,
         plan.actions.len()
     );
-    for e in outcome.errors.iter() {
-        eprintln!("{}", e);
-    }
+    // Errors are printed by main.rs via the returned Err result.
 }

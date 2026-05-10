@@ -78,6 +78,70 @@ def test_verbose_deploy_shows_operation_info(run_xd, tmp_repo, unique_home):
     assert len(result.stderr) > 0
 
 
+def test_verbose_no_duplicate_skip_failure(run_xd, tmp_repo, unique_home):
+    """SPEC §"输出语义": each SkipFailure event appears exactly once in
+    stderr, even when -v is enabled.
+
+    The skip must not be reported by both log_action (verbose summary)
+    and the error path — one event, one output line.
+    """
+    repo = tmp_repo
+    home = unique_home
+    # Two links: both conflict with existing regular files → both SkipFailure
+    (repo / "a").write_text("A")
+    (repo / "b").write_text("B")
+    (repo / "xdotter.toml").write_text('[links]\n"a" = "~/.a"\n"b" = "~/.b"\n')
+    (home / ".a").write_text("EXISTING_A")
+    (home / ".b").write_text("EXISTING_B")
+
+    result = run_xd(["-v", "deploy"], cwd=repo, home=home)
+    assert result.code != 0
+    # Each skip should appear exactly once: count the skip reason string
+    times = result.stderr.count("默认模式不替换已有对象")
+    assert times == 2, (
+        f"Expected each skip exactly once in stderr, got {times} occurrences; "
+        f"stderr:\n{result.stderr}"
+    )
+
+
+def test_undeploy_verbose_no_duplicate_skip(run_xd, tmp_repo, unique_home):
+    """Same non-duplication principle applies to undeploy -v output."""
+    repo = tmp_repo
+    home = unique_home
+    # Wrong symlink at link path → undeploy forces skip in default mode
+    (repo / "src").write_text("my source")
+    import os
+    (home / ".wrong").symlink_to("/etc/hostname")
+    (repo / "xdotter.toml").write_text('[links]\n"src" = "~/.wrong"\n')
+
+    result = run_xd(["-v", "undeploy"], cwd=repo, home=home)
+    assert result.code != 0
+    times = result.stderr.count("默认模式不删除错误符号链接")
+    assert times == 1, (
+        f"Expected skip reason exactly once in stderr, got {times} occurrences; "
+        f"stderr:\n{result.stderr}"
+    )
+
+
+def test_verbose_action_line_not_duplicated_in_summary(run_xd, tmp_repo, unique_home):
+    """The verbose action line and the summary line report different
+    information — the summary does not repeat individual link details.
+    """
+    repo = tmp_repo
+    home = unique_home
+    (repo / "x").write_text("X")
+    (repo / "xdotter.toml").write_text('[links]\n"x" = "~/.x"\n')
+
+    result = run_xd(["-v", "deploy"], cwd=repo, home=home)
+    assert result.code == 0
+    # The action line (verbose) reports the individual link
+    assert "->" in result.stderr, "expected action line in verbose output"
+    # The summary line reports aggregate counts (not repeating the action)
+    summary_line = [l for l in result.stderr.split('\n') if 'succeeded' in l]
+    assert len(summary_line) == 1, "expected exactly one summary line"
+    assert "->" not in summary_line[0], "summary must not repeat action details"
+
+
 def test_verbose_status_shows_correct_links(run_xd, tmp_repo, unique_home):
     """status -v shows correct link paths."""
     repo = tmp_repo

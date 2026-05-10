@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::apply;
 use crate::cli::{Cli, ConflictMode, DeployArgs};
 use crate::discover;
-use crate::error::{ErrorBag, XdError};
+use crate::error::XdError;
 use crate::log;
 use crate::plan::{
     self, DeployAction, DeployActionKind, DeployPlan, ExistingKind, PermissionAction,
@@ -32,7 +32,7 @@ pub fn run(cli: &Cli, args: &DeployArgs) -> Result<(), XdError> {
     let res = plan::build_deploy_plan(disc, mode);
 
     if !res.errors.is_empty() {
-        return Err(report_bag(res.errors));
+        return Err(res.errors.into_error());
     }
 
     log::debug(
@@ -59,17 +59,22 @@ pub fn run(cli: &Cli, args: &DeployArgs) -> Result<(), XdError> {
     print_deploy_outcome(&outcome, &res.plan);
 
     if outcome.failures > 0 || !outcome.errors.is_empty() {
-        return Err(report_bag(outcome.errors));
+        return Err(outcome.errors.into_error());
     }
     Ok(())
 }
 
 fn log_action(cli: &Cli, a: &DeployAction) {
+    // SkipFailure is reported via ErrorBag in print_deploy_outcome;
+    // verbose output would duplicate that information per SPEC.
+    if matches!(a.kind, DeployActionKind::SkipFailure(_)) {
+        return;
+    }
     let summary = match &a.kind {
         DeployActionKind::Create => "create",
         DeployActionKind::AlreadyCorrect => "already-correct",
         DeployActionKind::Replace(_) => "replace",
-        DeployActionKind::SkipFailure(_) => "skip",
+        DeployActionKind::SkipFailure(_) => unreachable!(),
     };
     log::info(
         cli,
@@ -80,11 +85,6 @@ fn log_action(cli: &Cli, a: &DeployAction) {
             a.source_canonical.display()
         ),
     );
-}
-
-fn report_bag(bag: ErrorBag) -> XdError {
-    bag.into_single()
-        .unwrap_or_else(|| XdError::apply("未知错误".to_string()))
 }
 
 fn dry_run_plan_has_failures(plan: &DeployPlan, mode: ConflictMode) -> bool {
@@ -181,9 +181,7 @@ fn print_deploy_outcome(outcome: &apply::ApplyOutcome, plan: &DeployPlan) {
         outcome.failures,
         plan.actions.len()
     );
-    for e in outcome.errors.iter() {
-        eprintln!("{}", e);
-    }
+    // Errors are printed by main.rs via the returned Err result.
 }
 
 fn describe_existing(e: &ExistingKind) -> &'static str {

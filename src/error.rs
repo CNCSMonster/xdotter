@@ -72,9 +72,24 @@ impl XdError {
     }
 }
 
+/// True when `s` starts with one of the four SPEC classification labels.
+fn starts_with_label(s: &str) -> bool {
+    s.starts_with("[CLI 参数错误]")
+        || s.starts_with("[配置错误]")
+        || s.starts_with("[规划阻塞错误]")
+        || s.starts_with("[应用阶段错误]")
+}
+
 impl fmt::Display for XdError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}", self.label(), self.body())
+        let body = self.body();
+        if starts_with_label(body) {
+            // Joined error bag: each line already carries its own
+            // classification label per SPEC §"输出语义".
+            write!(f, "{}", body)
+        } else {
+            write!(f, "{} {}", self.label(), body)
+        }
     }
 }
 
@@ -115,9 +130,9 @@ impl ErrorBag {
         self.items.iter()
     }
     /// Reduce the bag to a single error by joining all messages with
-    /// newlines. The first error's class is preserved as the bag's
-    /// class; downstream callers should iterate `items` for full detail
-    /// when they care about per-item classes.
+    /// newlines. Each error line preserves its own classification label
+    /// per SPEC §"输出语义"; the outer `XdError` variant does not add
+    /// another label when the joined text spans multiple lines.
     pub fn into_single(self) -> Option<XdError> {
         if self.items.is_empty() {
             return None;
@@ -125,19 +140,22 @@ impl ErrorBag {
         if self.items.len() == 1 {
             return self.items.into_iter().next();
         }
-        let first_class = self.items[0].clone();
         let joined = self
             .items
             .iter()
             .map(|e| e.to_string())
             .collect::<Vec<_>>()
             .join("\n");
-        Some(match first_class {
-            XdError::Cli(_) => XdError::Cli(joined),
-            XdError::Config(_) => XdError::Config(joined),
-            XdError::Planning(_) => XdError::Planning(joined),
-            XdError::Apply(_) => XdError::Apply(joined),
-        })
+        // Variant choice does not affect Display output for multi-line
+        // content (see Display impl).
+        Some(XdError::Planning(joined))
+    }
+
+    /// Convert the bag into a single `XdError` suitable for `Err`
+    /// return. An empty bag produces a generic fallback error.
+    pub fn into_error(self) -> XdError {
+        self.into_single()
+            .unwrap_or_else(|| XdError::apply("未知错误".to_string()))
     }
 }
 
@@ -155,5 +173,42 @@ mod tests {
         assert!(XdError::apply("x")
             .to_string()
             .starts_with("[应用阶段错误]"));
+    }
+
+    #[test]
+    fn single_error_with_multiline_body_still_gets_label() {
+        // A config error listing collision entries has a multi-line body
+        // but is a single error — it must still get the [配置错误] prefix.
+        let e = XdError::config("多个链接冲突：\n  - a\n  - b");
+        let s = e.to_string();
+        assert!(
+            s.starts_with("[配置错误] 多个链接冲突："),
+            "multi-line single error must carry label: {s}"
+        );
+        // Each content line should be preserved.
+        assert!(s.contains("  - a"), "must contain line a: {s}");
+        assert!(s.contains("  - b"), "must contain line b: {s}");
+    }
+
+    #[test]
+    fn into_single_preserves_per_line_labels() {
+        let mut bag = ErrorBag::new();
+        bag.push(XdError::planning("p1"));
+        bag.push(XdError::apply("a1"));
+        let joined = bag.into_single().unwrap().to_string();
+        assert!(
+            joined.contains("[规划阻塞错误] p1"),
+            "must contain planning error with label: {joined}"
+        );
+        assert!(
+            joined.contains("[应用阶段错误] a1"),
+            "must contain apply error with label: {joined}"
+        );
+        // No outer label wrapping — the Display should not prepend
+        // a redundant label before multi-line joined text.
+        assert!(
+            joined.starts_with("[规划阻塞错误] p1"),
+            "joined text must start directly with first error's label: {joined}"
+        );
     }
 }
