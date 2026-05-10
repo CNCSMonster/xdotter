@@ -27,6 +27,37 @@ creates links like:
 ~/.config/nvim  ->  <repo>/.config/nvim
 ```
 
+## Install
+
+**cargo:**
+
+```bash
+cargo install xdotter
+```
+
+**cargo-binstall:**
+
+```bash
+cargo binstall xdotter
+```
+
+**Prebuilt binary (Linux/macOS/Windows):**
+
+Download the asset matching your platform from the [latest release](https://github.com/CNCSMonster/xdotter/releases/latest)
+and place it in `~/.cargo/bin`:
+
+```bash
+curl -L https://github.com/CNCSMonster/xdotter/releases/latest/download/xd-$(rustc -vV | sed -n 's/host: //p') -o ~/.cargo/bin/xd
+chmod +x ~/.cargo/bin/xd
+```
+
+If glibc is too old (e.g. Ubuntu 22.04), use the static musl binary instead:
+
+```bash
+curl -L https://github.com/CNCSMonster/xdotter/releases/latest/download/xd-x86_64-unknown-linux-musl -o ~/.cargo/bin/xd
+chmod +x ~/.cargo/bin/xd
+```
+
 ## Commands
 
 ```bash
