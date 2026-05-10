@@ -63,7 +63,10 @@ pub fn run(cli: &Cli, args: &UndeployArgs) -> Result<(), XdError> {
 fn log_action(cli: &Cli, a: &UndeployAction) {
     // SkipFailure and NotASymlinkWarning are reported via ErrorBag;
     // verbose output would duplicate that information per SPEC.
-    if matches!(a.kind, UndeployActionKind::SkipFailure(_) | UndeployActionKind::NotASymlinkWarning) {
+    if matches!(
+        a.kind,
+        UndeployActionKind::SkipFailure(_) | UndeployActionKind::NotASymlinkWarning
+    ) {
         return;
     }
     let summary = match &a.kind {
