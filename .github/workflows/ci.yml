@@ -297,6 +297,28 @@ jobs:
           path: target/aarch64-unknown-linux-gnu/release/xd
           if-no-files-found: error
 
+  release-linux-musl:
+    name: Release Build (Linux x86_64 musl)
+    needs: [rust-test-linux, rust-e2e-linux]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-unknown-linux-musl
+          components: rust-src
+      - name: Install musl toolchain
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build release
+        run: cargo +nightly build --release --target x86_64-unknown-linux-musl -Z build-std=std,panic_abort
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xd-linux-musl
+          path: target/x86_64-unknown-linux-musl/release/xd
+          if-no-files-found: error
+
   release-macos-x86_64:
     name: Release Build (macOS x86_64)
     needs: [rust-test-macos, rust-e2e-macos]
@@ -370,7 +392,7 @@ jobs:
 
   upload-release:
     name: Upload to GitHub Release
-    needs: [release-linux-x86_64, release-linux-aarch64, release-macos-x86_64, release-macos-aarch64, release-windows-x86_64]
+    needs: [release-linux-x86_64, release-linux-aarch64, release-linux-musl, release-macos-x86_64, release-macos-aarch64, release-windows-x86_64]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
@@ -386,6 +408,7 @@ jobs:
           # Use standard Rust target triple names for consistent naming
           cp artifacts/xd-linux-x86_64/xd          release/xd-x86_64-unknown-linux-gnu
           cp artifacts/xd-linux-aarch64/xd         release/xd-aarch64-unknown-linux-gnu
+          cp artifacts/xd-linux-musl/xd            release/xd-x86_64-unknown-linux-musl
           cp artifacts/xd-macos-x86_64/xd          release/xd-x86_64-apple-darwin
           cp artifacts/xd-macos-aarch64/xd         release/xd-arm64-apple-darwin
           cp artifacts/xd-windows-x86_64/xd.exe    release/xd-x86_64-pc-windows-msvc.exe
@@ -406,7 +429,7 @@ jobs:
 
   publish-crates-io:
     name: Publish to crates.io
-    needs: [release-linux-x86_64, release-linux-aarch64, release-macos-x86_64, release-macos-aarch64, release-windows-x86_64]
+    needs: [release-linux-x86_64, release-linux-aarch64, release-linux-musl, release-macos-x86_64, release-macos-aarch64, release-windows-x86_64]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
