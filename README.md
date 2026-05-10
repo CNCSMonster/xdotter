@@ -44,19 +44,25 @@ cargo binstall xdotter
 **Prebuilt binary (Linux/macOS/Windows):**
 
 Download the asset matching your platform from the [latest release](https://github.com/CNCSMonster/xdotter/releases/latest)
-and place it in `~/.cargo/bin`:
+and place it on your `PATH`:
 
 ```bash
-curl -L https://github.com/CNCSMonster/xdotter/releases/latest/download/xd-$(rustc -vV | sed -n 's/host: //p') -o ~/.cargo/bin/xd
-chmod +x ~/.cargo/bin/xd
+# Linux / macOS
+mkdir -p ~/.local/bin
+curl -L https://github.com/CNCSMonster/xdotter/releases/latest/download/xd-$(rustc -vV | sed -n 's/host: //p') -o ~/.local/bin/xd
+chmod +x ~/.local/bin/xd
 ```
 
 If glibc is too old (e.g. Ubuntu 22.04), use the static musl binary instead:
 
 ```bash
-curl -L https://github.com/CNCSMonster/xdotter/releases/latest/download/xd-x86_64-unknown-linux-musl -o ~/.cargo/bin/xd
-chmod +x ~/.cargo/bin/xd
+curl -L https://github.com/CNCSMonster/xdotter/releases/latest/download/xd-x86_64-unknown-linux-musl -o ~/.local/bin/xd
+chmod +x ~/.local/bin/xd
 ```
+
+> `~/.local/bin` is part of the XDG Base Directory spec and is
+> typically on `PATH` by default. If not, add `export PATH="$HOME/.local/bin:$PATH"`
+> to your shell profile.
 
 ## Commands
 
