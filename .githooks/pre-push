@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# pre-push — 当 push 包含新 tag 时检查 release 就绪状态
+#
+# 安装: git config core.hooksPath .githooks
+#
+# 仅在有新 tag 被 push 时触发 Cargo.lock 完整性检查。
+# 普通分支 push 不受影响。
+
+set -euo pipefail
+
+remote="$1"
+url="$2"
+
+zero="0000000000000000000000000000000000000000"
+has_tag=false
+
+while read local_ref local_oid remote_ref remote_oid; do
+    case "$local_ref" in
+        refs/tags/*)
+            # 仅检查新建的 tag (remote_oid 全是0 表示远程不存在)
+            if [ "$remote_oid" = "$zero" ]; then
+                has_tag=true
+            fi
+            ;;
+    esac
+done
+
+if [ "$has_tag" = true ]; then
+    echo ""
+    echo ">>> 检测到 push 包含新 tag，检查 release 就绪状态..."
+    ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+    if "$ROOT/scripts/check-release-ready.sh" --quick; then
+        echo ""
+    else
+        echo ""
+        echo ">>> 取消 push。修复上述问题后重试。"
+        echo ">>> 跳过检查: git push --no-verify"
+        exit 1
+    fi
+fi
+
+exit 0
