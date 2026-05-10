@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1]
+
+### Added
+- **Linux musl build** — CI now produces `x86_64-unknown-linux-musl` static binary that runs on any Linux distribution regardless of glibc version (Ubuntu 22/24/26, Alpine, etc.)
+- **Install instructions** — README now covers `cargo install`, `cargo-binstall`, and manual download with musl fallback
+
 ## [0.5.0]
 
 ### Added
