@@ -411,14 +411,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          targets: x86_64-unknown-linux-gnu
-          components: rust-src
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@stable
       - name: Publish to crates.io
-        run: cargo +nightly publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }} -Z build-std=std,panic_abort
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
         env:
           CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
