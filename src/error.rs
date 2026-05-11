@@ -6,6 +6,7 @@
 //! and in README.
 
 use std::fmt;
+use std::path::Path;
 
 /// SPEC error class. Each variant maps to a stable label prefix that
 /// appears at the start of `Display` output so users and scripts can
@@ -94,6 +95,21 @@ impl fmt::Display for XdError {
 }
 
 impl std::error::Error for XdError {}
+
+/// Wrap an XdError's body with a config-file path prefix, preserving
+/// the error variant and classification label.
+pub(crate) fn decorate(e: &XdError, toml: &Path, ctx: Option<&str>) -> XdError {
+    let msg = match ctx {
+        Some(ctx) => format!("{}: {} {}", toml.display(), ctx, e.body()),
+        None => format!("{}: {}", toml.display(), e.body()),
+    };
+    match e {
+        XdError::Cli(_) => XdError::Cli(msg),
+        XdError::Config(_) => XdError::Config(msg),
+        XdError::Planning(_) => XdError::Planning(msg),
+        XdError::Apply(_) => XdError::Apply(msg),
+    }
+}
 
 /// Convenience: collect multiple errors into one Display-able blob,
 /// preserving each error's label so the aggregate still satisfies the

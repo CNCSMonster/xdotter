@@ -91,7 +91,7 @@ pub fn expand_tilde(raw: &str) -> Result<PathBuf, XdError> {
     Ok(PathBuf::from(raw))
 }
 
-fn home_dir() -> Option<PathBuf> {
+pub(crate) fn home_dir() -> Option<PathBuf> {
     if let Ok(h) = std::env::var("HOME") {
         if !h.is_empty() {
             return Some(PathBuf::from(h));

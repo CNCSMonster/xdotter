@@ -22,8 +22,8 @@ use std::path::Path;
 use crate::error::{ErrorBag, XdError};
 use crate::permissions;
 use crate::plan::{
-    any_symlink_component, DeployAction, DeployActionKind, DeployPlan, ExistingKind,
-    PermissionAction, UndeployAction, UndeployActionKind, UndeployPlan,
+    any_symlink_component, describe_existing, DeployAction, DeployActionKind, DeployPlan,
+    ExistingKind, PermissionAction, UndeployAction, UndeployActionKind, UndeployPlan,
 };
 
 #[cfg(unix)]
@@ -235,15 +235,6 @@ fn handle_permission(act: &DeployAction, interactive: bool) -> StepResult {
             StepResult::Success
         }
         (PermissionAction::Fix, None) => StepResult::Success,
-    }
-}
-
-fn describe_existing(e: &ExistingKind) -> &'static str {
-    match e {
-        ExistingKind::RegularFile => "普通文件",
-        ExistingKind::EmptyRealDir => "空真实目录",
-        ExistingKind::WrongSymlink => "错误符号链接",
-        ExistingKind::BrokenSymlink => "损坏符号链接",
     }
 }
 

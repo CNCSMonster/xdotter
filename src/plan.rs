@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use crate::cli::ConflictMode;
 use crate::discover::{is_inside, Discovered, DiscoveredConfig};
-use crate::error::{ErrorBag, XdError};
+use crate::error::{decorate, ErrorBag, XdError};
 use crate::path as p;
 use crate::permissions;
 
@@ -270,19 +270,19 @@ fn collect_global_links(configs: &[DiscoveredConfig], errors: &mut ErrorBag) -> 
         for (src_raw, link_raw) in &c.config.links {
             // Static source-path rules.
             if let Err(e) = p::validate_source_path(src_raw) {
-                errors.push(decorate(&e, &c.config_file));
+                errors.push(decorate(&e, &c.config_file, None));
                 continue;
             }
             // Static link-path rules.
             if let Err(e) = p::validate_link_path(link_raw) {
-                errors.push(decorate(&e, &c.config_file));
+                errors.push(decorate(&e, &c.config_file, None));
                 continue;
             }
             let source_resolved = p::normalize(&c.config_dir.join(src_raw));
             let expanded = match p::expand_tilde(link_raw) {
                 Ok(p) => p::normalize(&p),
                 Err(e) => {
-                    errors.push(decorate(&e, &c.config_file));
+                    errors.push(decorate(&e, &c.config_file, None));
                     continue;
                 }
             };
@@ -390,15 +390,7 @@ fn is_proper_path_prefix(outer: &Path, inner: &Path) -> bool {
     }
 }
 
-fn decorate(e: &XdError, toml: &Path) -> XdError {
-    let msg = format!("{}: {}", toml.display(), e.body());
-    match e {
-        XdError::Cli(_) => XdError::Cli(msg),
-        XdError::Config(_) => XdError::Config(msg),
-        XdError::Planning(_) => XdError::Planning(msg),
-        XdError::Apply(_) => XdError::Apply(msg),
-    }
-}
+
 
 // -----------------------------------------------------------------------------
 // Per-entry deploy planning
@@ -409,7 +401,7 @@ fn plan_one_deploy(ge: &GlobalEntry, mode: ConflictMode) -> Result<Option<Deploy
     //    inside config dir tree.
     let source_canonical = match validate_source_filesystem(&ge.source_resolved, &ge.config_dir) {
         Ok(p) => p,
-        Err(e) => return Err(decorate(&e, &ge.config_file)),
+        Err(e) => return Err(decorate(&e, &ge.config_file, None)),
     };
 
     // 2. Inspect existing object at link_expanded before topology checks.
@@ -423,7 +415,7 @@ fn plan_one_deploy(ge: &GlobalEntry, mode: ConflictMode) -> Result<Option<Deploy
     //    are handled separately below).
     if !matches!(kind, LinkSlot::CorrectSymlink) {
         if let Err(e) = check_topology(&ge.link_expanded, &source_canonical) {
-            return Err(decorate(&e, &ge.config_file));
+            return Err(decorate(&e, &ge.config_file, None));
         }
     }
 
@@ -444,6 +436,7 @@ fn plan_one_deploy(ge: &GlobalEntry, mode: ConflictMode) -> Result<Option<Deploy
                         source_canonical.display()
                     )),
                     &ge.config_file,
+                    None,
                 ));
             }
             act_for_replace(ExistingKind::EmptyRealDir, mode)
@@ -484,7 +477,7 @@ fn act_for_replace(existing: ExistingKind, mode: ConflictMode) -> DeployActionKi
     }
 }
 
-fn describe_existing(k: &ExistingKind) -> &'static str {
+pub(crate) fn describe_existing(k: &ExistingKind) -> &'static str {
     match k {
         ExistingKind::RegularFile => "普通文件",
         ExistingKind::EmptyRealDir => "空真实目录",
@@ -523,7 +516,7 @@ fn plan_permission(
 /// the SPEC permission table. Returns `None` if the path is not under
 /// `$HOME`.
 pub fn link_path_to_tilde_key(link: &Path) -> Option<String> {
-    let home = home_dir()?;
+    let home = crate::path::home_dir()?;
     let stripped = link.strip_prefix(&home).ok()?;
     if stripped.as_os_str().is_empty() {
         return Some("~".to_string());
@@ -531,14 +524,7 @@ pub fn link_path_to_tilde_key(link: &Path) -> Option<String> {
     Some(format!("~/{}", stripped.display()))
 }
 
-fn home_dir() -> Option<PathBuf> {
-    if let Ok(h) = std::env::var("HOME") {
-        if !h.is_empty() {
-            return Some(PathBuf::from(h));
-        }
-    }
-    dirs::home_dir()
-}
+
 
 // -----------------------------------------------------------------------------
 // Per-entry undeploy planning
@@ -870,8 +856,15 @@ fn read_link_target(link: &Path) -> LinkProbe {
 // -----------------------------------------------------------------------------
 
 fn check_topology(link: &Path, source_canon: &Path) -> Result<(), XdError> {
-    // 1. Same object: does the link, after symlink expansion of any
-    //    existing parent component, resolve to the source itself?
+    check_same_object_or_nesting(link, source_canon)?;
+    check_unsafe_ancestors(link, source_canon)?;
+    check_for_loop(link, source_canon)?;
+    Ok(())
+}
+
+/// Check that link and source are not the same object and that the link
+/// does not end up inside the source (either canonically or lexically).
+fn check_same_object_or_nesting(link: &Path, source_canon: &Path) -> Result<(), XdError> {
     if let Ok(link_canon) = link.canonicalize() {
         if link_canon == source_canon {
             return Err(XdError::planning(format!(
@@ -915,23 +908,19 @@ fn check_topology(link: &Path, source_canon: &Path) -> Result<(), XdError> {
                         source_canon.display()
                     )));
                 }
-                // Source under link's existing parent path means an
-                // empty-dir replacement could remove/contain source.
-                // dir_contains_source handles that case at action build time.
             }
         }
     }
+    Ok(())
+}
 
-    // 2. Unsafe ancestors: per SPEC §"符号链接安全语义", *any* existing
-    //    ancestor of the link path being a non-directory (regular file)
-    //    or being a symlink whose target lands the actual creation
-    //    position in source territory must be rejected as a planning-
-    //    block error.
+/// Walk up from link's parent; reject if any existing ancestor is a
+/// non-directory, or a symlink whose rebased creation position would
+/// land inside or equal to the source.
+fn check_unsafe_ancestors(link: &Path, source_canon: &Path) -> Result<(), XdError> {
     let mut cur = link.parent();
     while let Some(c) = cur {
         let Ok(meta) = fs::symlink_metadata(c) else {
-            // Ancestor doesn't exist on disk yet; further ancestors don't
-            // matter (they'll be created or also missing).
             cur = c.parent();
             if cur == Some(c) {
                 break;
@@ -940,11 +929,6 @@ fn check_topology(link: &Path, source_canon: &Path) -> Result<(), XdError> {
         };
         let ft = meta.file_type();
         if ft.is_symlink() {
-            // A symlinked ancestor is unsafe iff the actual creation
-            // position (link path "rebased" via this symlink) lands at
-            // or inside the source. Compute the rebased final position:
-            // rest = link's path beneath this ancestor; final_pos =
-            // ancestor_canonical / rest.
             if let Ok(rest) = link.strip_prefix(c) {
                 if let Ok(target) = fs::read_link(c) {
                     let target_abs = if target.is_absolute() {
@@ -965,22 +949,23 @@ fn check_topology(link: &Path, source_canon: &Path) -> Result<(), XdError> {
                 }
             }
         } else if !ft.is_dir() {
-            // Non-directory ancestor (regular file, fifo, socket...).
             return Err(XdError::planning(format!(
                 "链接路径祖先 {} 不是目录",
                 c.display()
             )));
         }
-        // Move to the next existing ancestor.
         let next = c.parent();
         if next == Some(c) {
             break;
         }
         cur = next;
     }
+    Ok(())
+}
 
-    // 3. Symlink loop: if a parent ancestor is a symlink whose target is
-    //    in the same chain (link path → ... → link path), reject.
+/// Reject if an ancestor symlink's target would create a cycle with
+/// the new link.
+fn check_for_loop(link: &Path, source_canon: &Path) -> Result<(), XdError> {
     if would_create_loop(link, source_canon) {
         return Err(XdError::planning(format!(
             "创建符号链接 {} -> {} 会产生符号链接循环",
@@ -988,7 +973,6 @@ fn check_topology(link: &Path, source_canon: &Path) -> Result<(), XdError> {
             source_canon.display()
         )));
     }
-
     Ok(())
 }
 

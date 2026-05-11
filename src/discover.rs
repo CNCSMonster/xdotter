@@ -15,7 +15,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::Config;
-use crate::error::{ErrorBag, XdError};
+use crate::error::{decorate, ErrorBag, XdError};
 use crate::path as p;
 
 /// A configuration that has been discovered, parsed, and had its
@@ -118,7 +118,7 @@ fn visit(
     for (name, raw) in &cfg.dependencies {
         if let Err(e) = p::validate_dependency_path(raw) {
             out.errors
-                .push(decorate(&e, &toml_path, &format!("依赖 \"{name}\"")));
+                .push(decorate(&e, &toml_path, Some(&format!("依赖 \"{name}\""))));
             continue;
         }
         let dep_dir = dir.join(raw);
@@ -200,16 +200,6 @@ fn canonicalize_dir(p: &Path) -> std::io::Result<PathBuf> {
 /// be already-canonicalized absolute paths.
 pub fn is_inside(child: &Path, parent: &Path) -> bool {
     child.starts_with(parent)
-}
-
-fn decorate(e: &XdError, toml: &Path, ctx: &str) -> XdError {
-    let msg = format!("{}: {} {}", toml.display(), ctx, e.body());
-    match e {
-        XdError::Cli(_) => XdError::Cli(msg),
-        XdError::Config(_) => XdError::Config(msg),
-        XdError::Planning(_) => XdError::Planning(msg),
-        XdError::Apply(_) => XdError::Apply(msg),
-    }
 }
 
 #[cfg(test)]
